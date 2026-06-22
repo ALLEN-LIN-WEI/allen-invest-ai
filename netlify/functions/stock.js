@@ -1,35 +1,89 @@
 exports.handler = async (event) => {
   const symbol = (event.queryStringParameters.symbol || "2330").replace(/\D/g, "");
   const budget = Number(event.queryStringParameters.budget || 0);
+  const apiKey = process.env.FINNHUB_API_KEY;
 
   try {
-    // v5.0 預設：使用 MOCK 模式，方便你先確認 Netlify Function 正常。
-    // 未來若要串接真實 API，請在 Netlify Environment variables 加入 API_KEY，
-    // 然後把下面的 mockMarket 改成呼叫你的合法市場資料 API。
-    const market = mockMarket(symbol);
-
-    return {
-      statusCode: 200,
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "Access-Control-Allow-Origin": "*"
-      },
-      body: JSON.stringify({
-        ...market,
+    if (!apiKey) {
+      return json({
+        ...mockMarket(symbol),
         budget,
         mode: "MOCK",
-        source: "Netlify Function 示範資料",
-        notice: "尚未設定真實市場資料 API Key"
-      })
-    };
+        source: "示範資料",
+        notice: "尚未設定 FINNHUB_API_KEY"
+      });
+    }
+
+    const finnhubSymbol = `${symbol}.TW`;
+    const url = `https://finnhub.io/api/v1/quote?symbol=${finnhubSymbol}&token=${apiKey}`;
+    const response = await fetch(url);
+    const quote = await response.json();
+
+    if (!quote || !quote.c || quote.c === 0) {
+      return json({
+        ...mockMarket(symbol),
+        budget,
+        mode: "MOCK_FALLBACK",
+        source: "Finnhub 查無即時資料，改用示範資料",
+        notice: `${finnhubSymbol} 無有效報價`
+      });
+    }
+
+    const changePercent = quote.pc
+      ? Math.round(((quote.c - quote.pc) / quote.pc) * 10000) / 100
+      : null;
+
+    return json({
+      symbol,
+      name: stockName(symbol),
+      price: quote.c,
+      changePercent,
+      volume: null,
+      pe: null,
+      eps: null,
+      updateTime: new Date().toLocaleString("zh-TW", {
+        timeZone: "Asia/Taipei"
+      }),
+      budget,
+      mode: "LIVE",
+      source: "Finnhub Quote API",
+      notice: "已取得真實報價；PE/EPS/法人資料待下一階段串接"
+    });
+
   } catch (error) {
     return {
       statusCode: 500,
       headers: { "Content-Type": "application/json; charset=utf-8" },
-      body: JSON.stringify({ error: "取得股票資料失敗", detail: error.message })
+      body: JSON.stringify({
+        error: "取得股票資料失敗",
+        detail: error.message
+      })
     };
   }
 };
+
+function json(data) {
+  return {
+    statusCode: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Access-Control-Allow-Origin": "*"
+    },
+    body: JSON.stringify(data)
+  };
+}
+
+function stockName(symbol) {
+  const names = {
+    "2330": "台積電",
+    "2317": "鴻海",
+    "2377": "微星",
+    "6214": "精誠",
+    "2881": "富邦金",
+    "0050": "元大台灣50"
+  };
+  return names[symbol] || "台股個股";
+}
 
 function mockMarket(symbol) {
   const profiles = {
@@ -37,35 +91,21 @@ function mockMarket(symbol) {
     "2317": { name: "鴻海", price: 216, changePercent: 0.8, volume: 58210, pe: 18.2, eps: 11.8 },
     "2377": { name: "微星", price: 188, changePercent: -0.4, volume: 12600, pe: 19.4, eps: 9.7 },
     "6214": { name: "精誠", price: 141, changePercent: 0.5, volume: 4300, pe: 21.3, eps: 6.6 },
-    "2881": { name: "富邦金", price: 141, changePercent: 0.2, volume: 22000, pe: 16.1, eps: 8.8 },
-    "0050": { name: "元大台灣50", price: 210, changePercent: 0.3, volume: 18000, pe: null, eps: null }
+    "2881": { name: "富邦金", price: 141, changePercent: 0.2, volume: 22000, pe: 16.1, eps: 8.8 }
   };
-
-  const fallback = pseudoMarket(symbol);
-  const data = profiles[symbol] || fallback;
 
   return {
     symbol,
-    name: data.name,
-    price: data.price,
-    changePercent: data.changePercent,
-    volume: data.volume,
-    pe: data.pe,
-    eps: data.eps,
-    updateTime: new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })
-  };
-}
-
-function pseudoMarket(symbol) {
-  let seed = 0;
-  for (const ch of symbol) seed += ch.charCodeAt(0);
-  const price = Math.round((50 + (seed % 300)) * 100) / 100;
-  return {
-    name: "台股個股",
-    price,
-    changePercent: Math.round((((seed % 21) - 10) / 10) * 100) / 100,
-    volume: 1000 + seed * 13,
-    pe: Math.round((12 + (seed % 30)) * 10) / 10,
-    eps: Math.round((price / (12 + (seed % 30))) * 10) / 10
+    ...(profiles[symbol] || {
+      name: "台股個股",
+      price: 100,
+      changePercent: 0,
+      volume: 0,
+      pe: null,
+      eps: null
+    }),
+    updateTime: new Date().toLocaleString("zh-TW", {
+      timeZone: "Asia/Taipei"
+    })
   };
 }
