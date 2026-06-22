@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Allen Invest AI v5.0｜Allen股票分析GPT</title>
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="hero">
+    <nav class="nav">
+      <div class="brand">
+        <span class="logo">A</span>
+        <div>
+          <h1>Allen Invest AI</h1>
+          <p>Allen股票分析GPT Web v5.0｜GitHub + Netlify 專業版</p>
+        </div>
+      </div>
+      <div class="nav-actions">
+        <button class="ghost" data-target="analyze">個股分析</button>
+        <button class="ghost" data-target="watchlist">自選股</button>
+        <button class="ghost" data-target="guide">API狀態</button>
+      </div>
+    </nav>
+
+    <section class="hero-content">
+      <div>
+        <div class="badge">即時資料架構 + 37項評分 + 買點與股數建議</div>
+        <h2>輸入股票代號，產生可執行的投資決策</h2>
+        <p>
+          v5.0 已加入 Netlify Functions 後端架構。按下分析時，會先呼叫後端 API，
+          取得股價資料，再計算回檔買點、建議股數、預算配置與 Allen AI 最終結論。
+        </p>
+      </div>
+
+      <div class="quick-card">
+        <label>股票代號</label>
+        <div class="search-row">
+          <input id="stockInput" placeholder="例如：2330、6214、2377、2881" />
+          <button id="analyzeBtn">開始分析</button>
+        </div>
+
+        <label class="budget-label">可投資預算（選填）</label>
+        <div class="search-row">
+          <input id="budgetInput" type="number" min="0" placeholder="例如：50000" />
+          <span class="currency">元</span>
+        </div>
+
+        <div class="chips">
+          <button class="chip" data-stock="2330">2330 台積電</button>
+          <button class="chip" data-stock="2317">2317 鴻海</button>
+          <button class="chip" data-stock="2377">2377 微星</button>
+          <button class="chip" data-stock="6214">6214 精誠</button>
+          <button class="chip" data-stock="2881">2881 富邦金</button>
+        </div>
+      </div>
+    </section>
+  </header>
+
+  <main>
+    <section id="analyze" class="panel">
+      <div class="section-title">
+        <h3>個股分析</h3>
+        <p>v5.0 會先呼叫後端 API。若市場資料 API 尚未設定，會使用示範資料。</p>
+      </div>
+
+      <div id="loading" class="loading hidden">正在取得市場資料並執行 Allen 分析...</div>
+      <div id="emptyState" class="empty">請輸入股票代號並按「開始分析」。</div>
+
+      <div id="result" class="result-grid hidden">
+        <article class="decision-card wide">
+          <div class="decision-head">
+            <div>
+              <p class="muted">Allen AI 最終結論</p>
+              <h2 id="oneLineDecision">等待分析</h2>
+            </div>
+            <div id="decisionBadge" class="decision-badge">--</div>
+          </div>
+
+          <div class="price-strip">
+            <div>
+              <span>目前股價</span>
+              <b id="currentPrice">--</b>
+            </div>
+            <div>
+              <span>漲跌幅</span>
+              <b id="changePercent">--</b>
+            </div>
+            <div>
+              <span>成交量</span>
+              <b id="volume">--</b>
+            </div>
+            <div>
+              <span>更新時間</span>
+              <b id="updateTime">--</b>
+            </div>
+          </div>
+
+          <div class="decision-grid">
+            <div class="decision-box">
+              <span>估值判斷</span>
+              <b id="valuationText">--</b>
+              <p id="valuationDetail">--</p>
+            </div>
+            <div class="decision-box">
+              <span>操作策略</span>
+              <b id="actionText">--</b>
+              <p id="actionDetail">--</p>
+            </div>
+            <div class="decision-box">
+              <span>建議部位</span>
+              <b id="positionText">--</b>
+              <p id="positionDetail">--</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="module-card wide">
+          <h4>建議買點與預算配置</h4>
+          <div class="buy-grid">
+            <div class="buy-card">
+              <span>第一買點</span>
+              <b id="buy1">--</b>
+              <p>輕倉 / 觀察部位</p>
+            </div>
+            <div class="buy-card">
+              <span>第二買點</span>
+              <b id="buy2">--</b>
+              <p>分批布局區</p>
+            </div>
+            <div class="buy-card">
+              <span>第三買點</span>
+              <b id="buy3">--</b>
+              <p>積極布局區</p>
+            </div>
+            <div class="buy-card highlight">
+              <span>建議先買</span>
+              <b id="sharesNow">--</b>
+              <p id="budgetPlan">--</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="score-main">
+          <div class="stock-line">
+            <div>
+              <p class="muted">分析標的</p>
+              <h2 id="stockTitle">--</h2>
+            </div>
+            <div class="score-circle">
+              <span id="totalScore">--</span>
+              <small>/100</small>
+            </div>
+          </div>
+
+          <div class="rating-row">
+            <span id="ratingBadge" class="rating">等待分析</span>
+            <span id="confidence">信心指數：--</span>
+          </div>
+
+          <p id="aiSummary" class="summary-text"></p>
+
+          <div class="link-row">
+            <a id="yahooLink" target="_blank" rel="noreferrer">Yahoo 股市</a>
+            <a id="cmoneyLink" target="_blank" rel="noreferrer">CMoney 討論</a>
+            <button id="addWatchBtn">加入自選股</button>
+          </div>
+        </article>
+
+        <article class="module-card">
+          <h4>五大面向分數</h4>
+          <div id="moduleBars"></div>
+        </article>
+
+        <article class="module-card wide">
+          <h4>37項評分卡</h4>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>面向</th>
+                  <th>指標</th>
+                  <th>分數</th>
+                  <th>判讀</th>
+                </tr>
+              </thead>
+              <tbody id="scoreTable"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="module-card">
+          <h4>資料來源狀態</h4>
+          <div id="sourceBox"></div>
+          <p class="note">未設定真實 API 時，後端會回傳示範資料，方便先測試流程。</p>
+        </article>
+
+        <article class="module-card">
+          <h4>Allen 操作提醒</h4>
+          <ul class="tips">
+            <li>高價 AI 熱門股：零股試單，不追高。</li>
+            <li>金融股、ETF、低價股：分數高且估值合理，可整張分批。</li>
+            <li>真正進場前，仍要核對即時報價、法人與大盤風險。</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="watchlist" class="panel">
+      <div class="section-title">
+        <h3>我的自選股</h3>
+        <p>存在瀏覽器中，不需要登入。</p>
+      </div>
+      <div class="watch-actions">
+        <input id="watchInput" placeholder="新增股票代號，例如 2881" />
+        <button id="watchAddBtn">新增</button>
+        <button id="watchClearBtn" class="danger">清空</button>
+      </div>
+      <div id="watchlistBox" class="cards"></div>
+    </section>
+
+    <section id="guide" class="panel">
+      <div class="section-title">
+        <h3>後端 API 狀態</h3>
+        <p>部署到 Netlify 後，可以測試以下網址。</p>
+      </div>
+      <div class="code-card">
+        <code>/.netlify/functions/stock?symbol=2330</code>
+      </div>
+      <p class="note">
+        若看到 JSON 代表後端成功。下一步只要在 Netlify 加入 API Key，就能改成真實行情來源。
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Allen Invest AI v5.0｜投資研究輔助工具，非投資保證或投顧建議。</p>
+  </footer>
+
+  <script src="assets/js/scoring.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
