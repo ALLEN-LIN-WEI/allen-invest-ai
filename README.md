@@ -1,4 +1,7 @@
-# Allen Invest AI v7.0 最終整合版
+## v7.1 修正
+- 修正按下「Allen 一鍵完整分析」時，瀏覽器事件被誤當成股票代號，導致跳出「請輸入股票代號」的問題。
+
+# Allen Invest AI v7.1 按鈕修正版
 
 ## 功能
 - 台股行情資料源：Netlify Function 後端
