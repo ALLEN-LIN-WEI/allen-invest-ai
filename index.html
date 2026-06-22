@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Allen Invest AI v5.0｜Allen股票分析GPT</title>
+  <title>Allen Invest AI v7.0｜最終整合版</title>
   <link rel="stylesheet" href="assets/css/style.css" />
 </head>
 <body>
@@ -13,31 +13,32 @@
         <span class="logo">A</span>
         <div>
           <h1>Allen Invest AI</h1>
-          <p>Allen股票分析GPT Web v5.0｜GitHub + Netlify 專業版</p>
+          <p>Allen股票分析GPT Web v7.0｜最終整合版</p>
         </div>
       </div>
       <div class="nav-actions">
-        <button class="ghost" data-target="analyze">個股分析</button>
+        <button class="ghost" data-target="analyze">一鍵分析</button>
         <button class="ghost" data-target="watchlist">自選股</button>
-        <button class="ghost" data-target="guide">API狀態</button>
+        <button class="ghost" data-target="guide">後端狀態</button>
       </div>
     </nav>
 
     <section class="hero-content">
       <div>
-        <div class="badge">即時資料架構 + 37項評分 + 買點與股數建議</div>
-        <h2>輸入股票代號，產生可執行的投資決策</h2>
+        <div class="badge">台股即時資料 × 37項評分 × 買點與股數建議</div>
+        <h2>輸入股票代號，直接得到 Allen 最終投資結論</h2>
         <p>
-          v5.0 已加入 Netlify Functions 後端架構。按下分析時，會先呼叫後端 API，
-          取得股價資料，再計算回檔買點、建議股數、預算配置與 Allen AI 最終結論。
+          這是最終整合版：按下分析後，系統會取得台股行情資料，
+          套用 Allen 37項評分模型，計算第一、第二、第三買點，
+          並依股票屬性與預算給出零股、整張或等待建議。
         </p>
       </div>
 
       <div class="quick-card">
         <label>股票代號</label>
         <div class="search-row">
-          <input id="stockInput" placeholder="例如：2330、6214、2377、2881" />
-          <button id="analyzeBtn">開始分析</button>
+          <input id="stockInput" placeholder="例如：2330、6214、2377、2881、0050" />
+          <button id="analyzeBtn">Allen 一鍵完整分析</button>
         </div>
 
         <label class="budget-label">可投資預算（選填）</label>
@@ -52,6 +53,7 @@
           <button class="chip" data-stock="2377">2377 微星</button>
           <button class="chip" data-stock="6214">6214 精誠</button>
           <button class="chip" data-stock="2881">2881 富邦金</button>
+          <button class="chip" data-stock="0050">0050 元大台灣50</button>
         </div>
       </div>
     </section>
@@ -60,40 +62,28 @@
   <main>
     <section id="analyze" class="panel">
       <div class="section-title">
-        <h3>個股分析</h3>
-        <p>v5.0 會先呼叫後端 API。若市場資料 API 尚未設定，會使用示範資料。</p>
+        <h3>Allen 一鍵完整分析</h3>
+        <p>即時行情成功時會顯示 LIVE_TW；資料不足時會明確標示，避免誤判。</p>
       </div>
 
-      <div id="loading" class="loading hidden">正在取得市場資料並執行 Allen 分析...</div>
-      <div id="emptyState" class="empty">請輸入股票代號並按「開始分析」。</div>
+      <div id="loading" class="loading hidden">正在取得台股行情並執行 Allen 37項評分...</div>
+      <div id="emptyState" class="empty">請輸入股票代號並按「Allen 一鍵完整分析」。</div>
 
       <div id="result" class="result-grid hidden">
         <article class="decision-card wide">
           <div class="decision-head">
             <div>
-              <p class="muted">Allen AI 最終結論</p>
+              <p class="muted">Allen 今天會怎麼做？</p>
               <h2 id="oneLineDecision">等待分析</h2>
             </div>
             <div id="decisionBadge" class="decision-badge">--</div>
           </div>
 
           <div class="price-strip">
-            <div>
-              <span>目前股價</span>
-              <b id="currentPrice">--</b>
-            </div>
-            <div>
-              <span>漲跌幅</span>
-              <b id="changePercent">--</b>
-            </div>
-            <div>
-              <span>成交量</span>
-              <b id="volume">--</b>
-            </div>
-            <div>
-              <span>更新時間</span>
-              <b id="updateTime">--</b>
-            </div>
+            <div><span>目前股價</span><b id="currentPrice">--</b></div>
+            <div><span>漲跌幅</span><b id="changePercent">--</b></div>
+            <div><span>成交量</span><b id="volume">--</b></div>
+            <div><span>更新時間</span><b id="updateTime">--</b></div>
           </div>
 
           <div class="decision-grid">
@@ -173,7 +163,7 @@
         </article>
 
         <article class="module-card wide">
-          <h4>37項評分卡</h4>
+          <h4>Allen 37項評分卡</h4>
           <div class="table-wrap">
             <table>
               <thead>
@@ -192,15 +182,15 @@
         <article class="module-card">
           <h4>資料來源狀態</h4>
           <div id="sourceBox"></div>
-          <p class="note">未設定真實 API 時，後端會回傳示範資料，方便先測試流程。</p>
+          <p class="note">LIVE_TW 代表已取得台股行情；若為 MOCK_FALLBACK，代表暫用示範資料。</p>
         </article>
 
         <article class="module-card">
-          <h4>Allen 操作提醒</h4>
+          <h4>Allen 操作原則</h4>
           <ul class="tips">
             <li>高價 AI 熱門股：零股試單，不追高。</li>
-            <li>金融股、ETF、低價股：分數高且估值合理，可整張分批。</li>
-            <li>真正進場前，仍要核對即時報價、法人與大盤風險。</li>
+            <li>金融股、ETF、低價股：評分高且估值合理，可整張分批。</li>
+            <li>買點只是輔助，實際進場仍需核對大盤、法人與量價。</li>
           </ul>
         </article>
       </div>
@@ -209,7 +199,7 @@
     <section id="watchlist" class="panel">
       <div class="section-title">
         <h3>我的自選股</h3>
-        <p>存在瀏覽器中，不需要登入。</p>
+        <p>自選股存在瀏覽器中，不需要登入。</p>
       </div>
       <div class="watch-actions">
         <input id="watchInput" placeholder="新增股票代號，例如 2881" />
@@ -221,20 +211,18 @@
 
     <section id="guide" class="panel">
       <div class="section-title">
-        <h3>後端 API 狀態</h3>
-        <p>部署到 Netlify 後，可以測試以下網址。</p>
+        <h3>後端 API 測試</h3>
+        <p>部署後可用以下路徑確認後端是否正常。</p>
       </div>
       <div class="code-card">
         <code>/.netlify/functions/stock?symbol=2330</code>
       </div>
-      <p class="note">
-        若看到 JSON 代表後端成功。下一步只要在 Netlify 加入 API Key，就能改成真實行情來源。
-      </p>
+      <p class="note">看到 JSON 且 mode 為 LIVE_TW，代表台股即時行情資料源已成功。</p>
     </section>
   </main>
 
   <footer>
-    <p>Allen Invest AI v5.0｜投資研究輔助工具，非投資保證或投顧建議。</p>
+    <p>Allen Invest AI v7.0｜研究輔助工具，非投資保證或投顧建議。</p>
   </footer>
 
   <script src="assets/js/scoring.js"></script>
