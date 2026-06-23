@@ -1,21 +1,12 @@
-# Allen Invest AI Final v10.9 財報資料版
+# Allen Invest AI Final v10.9.1 財報安全版
 
-## v10.9 修正重點
-- 修正只有少數股票有 EPS / ROE / PE 的問題。
-- 新增 FinMind 財報資料模組：
-  - TaiwanStockPER：嘗試取得 PE
-  - TaiwanStockFinancialStatements：嘗試取得 EPS、ROE
-- EPS 成長性與 EPS 穩定性改用近8期 EPS 嘗試判斷。
-- 若 FinMind 抓不到，才使用少數常用股票備用資料。
-- 若仍沒有資料，才顯示「C｜待補」。
+## 修正
+- 解決 v10.9 因外部資料源太多、可能逾時而導致「取得後端資料失敗」。
+- 加入全域 try/catch，後端就算發生錯誤也會安全回傳 JSON。
+- 財報資料改為安全抓取，抓不到不會讓整個分析失敗。
+- 每個外部來源加入 timeout，避免 Netlify Function 卡住。
+- 保留 EPS / PE / ROE / 近8期 EPS 判斷架構。
 
-## 建議設定
-到 Netlify：
-Site settings → Environment variables
-新增：
+## 建議
+若要提升 FinMind 穩定度，請在 Netlify Environment variables 新增：
 FINMIND_TOKEN = 你的 FinMind token
-
-沒有 token 也可用，但較容易遇到流量限制。
-
-## 注意
-不同股票的財報欄位名稱可能不完全一致，v10.9 已加入多種欄位名稱判斷，但仍可能有部分股票顯示待補。
