@@ -1,12 +1,34 @@
-# Allen Invest AI Final v10.6
+# Allen Invest AI Final v10.8 資料穩定版
 
-## v10.6 修正重點
-- 移除錯誤 mock 價格：即時行情失敗時，不再使用示範價做估值與買點。
-- 即時 MIS 失敗時，改用 FinMind 最新日K收盤價，並清楚標示「非即時」。
-- 均線、量能、法人改成獨立抓取，不再因即時行情失敗而全部顯示待補。
-- 60MA、120MA、20日均量、量能倍數：來自 FinMind TaiwanStockPrice。
-- 法人20日：來自 FinMind TaiwanStockInstitutionalInvestorsBuySell。
-- 若 FinMind 無資料或流量限制，會顯示原因，不會假裝有資料。
+## v10.8 只處理三件事
+1. 穩定股價來源
+   - TWSE / TPEx MIS
+   - Yahoo 備援
+   - CMoney 備援
+   - FinMind 最新日收盤價
+   - 無可靠價格則不使用假價格
+   - 加入 60 秒～5 分鐘記憶體快取，降低 Netlify Credits 消耗
 
-## 重要提醒
-即時行情仍以券商報價為最終準據；網站若顯示「非即時收盤價」或「舊資料」，請不要用該價格直接下單。
+2. 穩定 60MA / 120MA 與量能
+   - FinMind TaiwanStockPrice
+   - 5MA / 10MA / 20MA / 60MA / 120MA
+   - 20日均量
+   - 量能倍數
+
+3. 穩定法人資料
+   - FinMind TaiwanStockInstitutionalInvestorsBuySell
+   - 外資5日 / 20日
+   - 投信5日 / 20日
+   - 自營商5日 / 20日
+
+## 建議設定
+為提高 FinMind 穩定度，建議到 Netlify：
+Site settings → Environment variables
+新增：
+FINMIND_TOKEN = 你的 FinMind token
+
+沒有 token 也可用，但較容易遇到流量限制。
+
+## 注意
+Yahoo 與 CMoney 備援為非官方 HTML 解析，可能因網站改版失效。
+正式下單仍以券商即時報價為準。

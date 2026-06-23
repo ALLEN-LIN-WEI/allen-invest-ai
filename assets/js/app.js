@@ -80,7 +80,7 @@ function render(m,a){
   $("retireText").textContent = retirementText(a.profile);
   $("dataScore").textContent = `${a.data.score}%`;
   $("missingBox").innerHTML = a.data.missing.length ? a.data.missing.map(x=>`<span class="pill">${x} 待補</span>`).join("") : `<span class="pill">資料完整</span>`;
-  $("sourceInfo").textContent = `${m.mode || "--"}｜${m.source || "--"}｜${m.updateTime || "--"}｜${m.quoteFreshness || "行情狀態待確認"}`;
+  $("sourceInfo").textContent = `${m.mode || "--"}｜${m.source || "--"}｜${m.updateTime || "--"}｜${m.quoteFreshness || "行情狀態待確認"}${m.backupSource ? "｜備援："+m.backupSource : ""}`;
 
   renderReport(m,a);
   renderDetails(a.details);

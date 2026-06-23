@@ -38,7 +38,7 @@ function analyzeStock(market){
   }
   if(market.roe && market.roe > 20) s.fundamental += 2;
 
-  if(market.maReady){
+  if(market.maReady && market.price){
     if(market.price > market.ma60) s.technical += 2; else s.technical -= 2;
     if(market.price > market.ma120) s.technical += 2; else s.technical -= 2;
   }

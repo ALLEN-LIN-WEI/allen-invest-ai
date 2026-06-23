@@ -1,47 +1,74 @@
+// Allen Invest AI Final v10.8 - 資料穩定版
+// 目標：穩定股價來源、穩定 60MA/120MA 與量能、穩定法人資料。
+// 注意：FINMIND_TOKEN 可選。若在 Netlify Environment variables 設定 FINMIND_TOKEN，穩定度會更高。
+
+const memoryCache = globalThis.__ALLEN_CACHE__ || (globalThis.__ALLEN_CACHE__ = new Map());
+
 exports.handler = async (event) => {
   const symbol = (event.queryStringParameters.symbol || "2330").replace(/\D/g, "");
   const budget = Number(event.queryStringParameters.budget || 0);
-
-  // v10.6 核心原則：
-  // 1. 即時 MIS 成功：用最新成交價。
-  // 2. 即時 MIS 失敗：改用 FinMind 最新日收盤價，明確標示「非即時」。
-  // 3. 除非所有資料源都失敗，否則不使用 mock 價格進行買點與估值。
-  // 4. 技術面、量能、法人分開抓，不因即時行情失敗而全部失效。
+  const cacheKey = `stock:${symbol}`;
+  const cached = getCache(cacheKey);
+  if (cached) {
+    return json({ ...cached, budget, cacheHit:true });
+  }
 
   let market;
-  try {
-    market = await getTaiwanMarket(symbol);
-  } catch (liveError) {
+  const errors = [];
+
+  for (const getter of [
+    ["MIS", () => getTaiwanMarket(symbol)],
+    ["Yahoo", () => getYahooQuote(symbol)],
+    ["CMoney", () => getCMoneyQuote(symbol)],
+    ["FinMindDaily", () => getLatestDailyPrice(symbol)]
+  ]) {
+    if (market) break;
     try {
-      market = await getLatestDailyPrice(symbol, liveError.message);
-    } catch (dailyError) {
-      market = {
-        symbol,
-        name: stockName(symbol),
-        price:null,
-        changePercent:null,
-        volume:null,
-        updateTime:new Date().toLocaleString("zh-TW", {timeZone:"Asia/Taipei"}),
-        quoteWarning:true,
-        quoteWarningText:"無法取得可靠股價，請以券商報價為準",
-        quoteFreshness:"🔴 無可靠行情",
-        market:null,
-        mode:"NO_PRICE",
-        source:"無可靠資料",
-        notice:`即時與日K資料皆失敗：${dailyError.message}`
-      };
+      market = await getter[1]();
+    } catch (e) {
+      errors.push(`${getter[0]}:${e.message}`);
     }
   }
 
-  const enriched = enrich(symbol, market);
+  if (!market) {
+    market = {
+      symbol,
+      name: stockName(symbol),
+      price:null,
+      changePercent:null,
+      volume:null,
+      updateTime:new Date().toLocaleString("zh-TW", {timeZone:"Asia/Taipei"}),
+      quoteWarning:true,
+      quoteWarningText:"無法取得可靠股價，請以券商報價為準",
+      quoteFreshness:"🔴 無可靠行情",
+      market:null,
+      mode:"NO_PRICE",
+      source:"無可靠資料",
+      backupSource:null,
+      notice:`所有行情來源皆失敗：${errors.join(" | ")}`
+    };
+  }
 
+  const enriched = enrich(symbol, market);
   const [tech, inst] = await Promise.all([
     getTechnical(symbol, enriched),
     getInstitutional(symbol)
   ]);
 
-  return json({ ...enriched, ...tech, ...inst, budget });
+  const finalPayload = { ...enriched, ...tech, ...inst };
+  setCache(cacheKey, finalPayload, finalPayload.mode === "LIVE_TW" ? 60 : 300);
+  return json({ ...finalPayload, budget, cacheHit:false });
 };
+
+function getCache(key){
+  const row = memoryCache.get(key);
+  if(!row) return null;
+  if(Date.now() > row.expires){ memoryCache.delete(key); return null; }
+  return row.value;
+}
+function setCache(key,value,ttlSec){
+  memoryCache.set(key,{value,expires:Date.now()+ttlSec*1000});
+}
 
 async function getTaiwanMarket(symbol){
   const channels = [
@@ -64,8 +91,8 @@ async function getTaiwanMarket(symbol){
       const item = data?.msgArray?.[0];
       if(!item) continue;
 
-      // 僅接受最新成交價 z；z 為 "-" 時，不退回開盤價/昨收，避免產生錯誤即時價。
       const latest = num(item.z);
+      // 僅接受最新成交價 z。絕不退回昨收/開盤，避免鴻海 260 變 216 這類問題。
       if(!latest || latest <= 0) continue;
 
       const prev = num(item.y);
@@ -85,6 +112,7 @@ async function getTaiwanMarket(symbol){
         market:ch.prefix,
         mode:"LIVE_TW",
         source:ch.source,
+        backupSource:null,
         notice:quoteStatus.warning ? "已取得最新成交價，但資料時間可能延遲" : "已取得最新成交價"
       };
     }catch(e){}
@@ -92,16 +120,107 @@ async function getTaiwanMarket(symbol){
   throw new Error(`${symbol} 查無有效最新成交價`);
 }
 
-async function getLatestDailyPrice(symbol, liveErrorMessage){
-  const end = new Date();
-  const start = new Date(Date.now() - 14*24*60*60*1000);
-  const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${symbol}&start_date=${fmt(start)}&end_date=${fmt(end)}`;
-  const res = await fetch(url, {headers:{"Accept":"application/json"}});
-  const data = await res.json();
-  const rows = (data.data || []).filter(r => r.close).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-  if(!rows.length) throw new Error(`FinMind 查無 ${symbol} 最新日K`);
-  const last = rows[rows.length-1];
-  const prev = rows.length >= 2 ? rows[rows.length-2] : null;
+async function getYahooQuote(symbol){
+  const url = `https://tw.stock.yahoo.com/quote/${symbol}.TW`;
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent":"Mozilla/5.0",
+      "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language":"zh-TW,zh;q=0.9,en;q=0.8"
+    }
+  });
+  const html = await res.text();
+
+  // Yahoo 頁面常把資料放在 next data/json 片段中，多組 pattern 依序嘗試。
+  const price = pickFirstNumber([
+    /"regularMarketPrice"\s*:\s*\{[^}]*"raw"\s*:\s*([0-9.]+)/,
+    /"regularMarketPrice"\s*:\s*([0-9.]+)/,
+    /"price"\s*:\s*\{[^}]*"raw"\s*:\s*([0-9.]+)/,
+    /"close"\s*:\s*([0-9.]+)/,
+    /成交價[^0-9]{0,120}([0-9]+(?:\.[0-9]+)?)/
+  ], html);
+
+  if(!price) throw new Error("Yahoo 無法解析價格");
+
+  const changePercent = pickFirstNumber([
+    /"regularMarketChangePercent"\s*:\s*\{[^}]*"raw"\s*:\s*(-?[0-9.]+)/,
+    /"regularMarketChangePercent"\s*:\s*(-?[0-9.]+)/
+  ], html);
+
+  const nameMatch = html.match(/<title>(.*?)<\/title>/i);
+  const name = nameMatch ? cleanText(nameMatch[1]).split("(")[0].replace("Yahoo奇摩股市","").replace("|","").trim() : stockName(symbol);
+
+  return {
+    symbol,
+    name:name || stockName(symbol),
+    price,
+    changePercent: changePercent !== null ? Math.round(changePercent*100)/100 : null,
+    volume:null,
+    updateTime:new Date().toLocaleString("zh-TW", {timeZone:"Asia/Taipei"}),
+    quoteWarning:true,
+    quoteWarningText:"使用 Yahoo 備援價，請以券商報價確認",
+    quoteFreshness:"🟡 Yahoo 備援",
+    market:null,
+    mode:"BACKUP_YAHOO",
+    source:"Yahoo 股市備援",
+    backupSource:"Yahoo",
+    notice:"Yahoo 備援價僅供分析參考"
+  };
+}
+
+async function getCMoneyQuote(symbol){
+  const urls = [
+    `https://www.cmoney.tw/forum/stock/${symbol}`,
+    `https://www.cmoney.tw/forum/stock/${symbol}?s=quote`
+  ];
+
+  for(const url of urls){
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":"Mozilla/5.0",
+        "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language":"zh-TW,zh;q=0.9,en;q=0.8"
+      }
+    });
+    const html = await res.text();
+
+    const price = pickFirstNumber([
+      /"price"\s*:\s*"?([0-9]+(?:\.[0-9]+)?)"?/,
+      /"close"\s*:\s*"?([0-9]+(?:\.[0-9]+)?)"?/,
+      /"currentPrice"\s*:\s*"?([0-9]+(?:\.[0-9]+)?)"?/,
+      /最新價[^0-9]{0,120}([0-9]+(?:\.[0-9]+)?)/,
+      /成交價[^0-9]{0,120}([0-9]+(?:\.[0-9]+)?)/
+    ], html);
+
+    if(price){
+      return {
+        symbol,
+        name:stockName(symbol),
+        price,
+        changePercent:null,
+        volume:null,
+        updateTime:new Date().toLocaleString("zh-TW", {timeZone:"Asia/Taipei"}),
+        quoteWarning:true,
+        quoteWarningText:"使用 CMoney 備援價，請以券商報價確認",
+        quoteFreshness:"🟡 CMoney 備援",
+        market:null,
+        mode:"BACKUP_CMONEY",
+        source:"CMoney 股市備援",
+        backupSource:"CMoney",
+        notice:"CMoney 備援價僅供分析參考"
+      };
+    }
+  }
+
+  throw new Error("CMoney 無法解析價格");
+}
+
+async function getLatestDailyPrice(symbol){
+  const rows = await finmindDataset("TaiwanStockPrice", symbol, daysAgo(20), today());
+  const clean = rows.filter(r => r.close).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  if(!clean.length) throw new Error(`FinMind 查無 ${symbol} 最新日K`);
+  const last = clean[clean.length-1];
+  const prev = clean.length >= 2 ? clean[clean.length-2] : null;
   const price = Number(last.close);
   const prevClose = prev ? Number(prev.close) : null;
   const changePercent = prevClose ? Math.round(((price-prevClose)/prevClose)*10000)/100 : null;
@@ -114,29 +233,29 @@ async function getLatestDailyPrice(symbol, liveErrorMessage){
     volume:last.Trading_Volume ? Math.round(Number(last.Trading_Volume)/1000) : null,
     updateTime:`${last.date} 收盤`,
     quoteWarning:true,
-    quoteWarningText:"即時行情失敗，改用最近一日收盤價",
+    quoteWarningText:"即時與備援行情失敗，改用最近一日收盤價",
     quoteFreshness:"🟡 非即時收盤價",
     market:null,
     mode:"DELAYED_DAILY",
     source:"FinMind 最新日K收盤價",
-    notice:`即時 MIS 失敗，已改用日K收盤價。原因：${liveErrorMessage}`
+    backupSource:"FinMind",
+    notice:"即時與備援行情失敗，已改用日K收盤價"
   };
 }
 
 async function getTechnical(symbol, market){
   try{
-    const end = new Date();
-    const start = new Date(Date.now() - 260*24*60*60*1000);
-    const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${symbol}&start_date=${fmt(start)}&end_date=${fmt(end)}`;
-    const res = await fetch(url, {headers:{"Accept":"application/json"}});
-    const data = await res.json();
-    const rows = (data.data || []).filter(r => r.close && r.Trading_Volume).sort((a,b)=>String(a.date).localeCompare(String(b.date))).slice(-150);
-    if(rows.length < 120) {
-      return {maReady:false, volumeReady:false, technicalNotice:`日K筆數不足：${rows.length}/120`};
+    const rows = await finmindDataset("TaiwanStockPrice", symbol, daysAgo(300), today());
+    const clean = rows.filter(r => r.close && r.Trading_Volume).sort((a,b)=>String(a.date).localeCompare(String(b.date))).slice(-150);
+    if(clean.length < 120) {
+      return {maReady:false, volumeReady:false, technicalNotice:`日K筆數不足：${clean.length}/120`};
     }
 
-    const closes = rows.map(r => Number(r.close));
-    const vols = rows.map(r => Number(r.Trading_Volume)/1000);
+    const closes = clean.map(r => Number(r.close));
+    const vols = clean.map(r => Number(r.Trading_Volume)/1000);
+    const ma5 = avg(closes.slice(-5));
+    const ma10 = avg(closes.slice(-10));
+    const ma20 = avg(closes.slice(-20));
     const ma60 = avg(closes.slice(-60));
     const ma120 = avg(closes.slice(-120));
     const avgVolume20 = avg(vols.slice(-20));
@@ -144,6 +263,9 @@ async function getTechnical(symbol, market){
     const volumeRatio = avgVolume20 ? Math.round((currentVolume/avgVolume20)*100)/100 : null;
 
     return {
+      ma5:round(ma5),
+      ma10:round(ma10),
+      ma20:round(ma20),
       ma60:round(ma60),
       ma120:round(ma120),
       avgVolume20:Math.round(avgVolume20),
@@ -159,16 +281,12 @@ async function getTechnical(symbol, market){
 
 async function getInstitutional(symbol){
   try{
-    const end = new Date();
-    const start = new Date(Date.now() - 55*24*60*60*1000);
-    const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id=${symbol}&start_date=${fmt(start)}&end_date=${fmt(end)}`;
-    const res = await fetch(url, {headers:{"Accept":"application/json"}});
-    const data = await res.json();
-    const rows = (data.data || []).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-    if(!rows.length) return institutionalEmpty("FinMind 無法人資料或免費額度限制");
+    const rows = await finmindDataset("TaiwanStockInstitutionalInvestorsBuySell", symbol, daysAgo(80), today());
+    const clean = rows.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    if(!clean.length) return institutionalEmpty("FinMind 無法人資料或免費額度限制");
 
     const byDate = {};
-    for(const r of rows){
+    for(const r of clean){
       const date = r.date;
       const name = String(r.name || "");
       const net = Number(r.buy || 0) - Number(r.sell || 0);
@@ -179,26 +297,34 @@ async function getInstitutional(symbol){
     }
 
     const days = Object.keys(byDate).sort().slice(-20);
+    const days5 = Object.keys(byDate).sort().slice(-5);
     if(!days.length) return institutionalEmpty("法人資料日期不足");
 
-    const sum = days.reduce((acc,d)=>{
-      acc.foreign += byDate[d].foreign || 0;
-      acc.trust += byDate[d].trust || 0;
-      acc.dealer += byDate[d].dealer || 0;
-      return acc;
-    },{foreign:0,trust:0,dealer:0});
+    const sum20 = sumInstitutionDays(byDate, days);
+    const sum5 = sumInstitutionDays(byDate, days5);
 
-    // FinMind 該資料集通常為股數，轉為張。
     return {
       institutionalReady:true,
-      foreign20d:Math.round(sum.foreign/1000),
-      trust20d:Math.round(sum.trust/1000),
-      dealer20d:Math.round(sum.dealer/1000),
+      foreign20d:Math.round(sum20.foreign/1000),
+      trust20d:Math.round(sum20.trust/1000),
+      dealer20d:Math.round(sum20.dealer/1000),
+      foreign5d:Math.round(sum5.foreign/1000),
+      trust5d:Math.round(sum5.trust/1000),
+      dealer5d:Math.round(sum5.dealer/1000),
       institutionalSource:"FinMind 盤後法人資料"
     };
   }catch(e){
     return institutionalEmpty(`法人資料失敗：${e.message}`);
   }
+}
+
+function sumInstitutionDays(byDate, days){
+  return days.reduce((acc,d)=>{
+    acc.foreign += byDate[d].foreign || 0;
+    acc.trust += byDate[d].trust || 0;
+    acc.dealer += byDate[d].dealer || 0;
+    return acc;
+  },{foreign:0,trust:0,dealer:0});
 }
 
 function institutionalEmpty(reason){
@@ -207,8 +333,21 @@ function institutionalEmpty(reason){
     foreign20d:null,
     trust20d:null,
     dealer20d:null,
+    foreign5d:null,
+    trust5d:null,
+    dealer5d:null,
     institutionalSource:reason || "法人資料尚未取得"
   };
+}
+
+async function finmindDataset(dataset, symbol, startDate, endDate){
+  const token = process.env.FINMIND_TOKEN || "";
+  const tokenPart = token ? `&token=${encodeURIComponent(token)}` : "";
+  const url = `https://api.finmindtrade.com/api/v4/data?dataset=${dataset}&data_id=${symbol}&start_date=${startDate}&end_date=${endDate}${tokenPart}`;
+  const res = await fetch(url, {headers:{"Accept":"application/json"}});
+  const data = await res.json();
+  if(data.status && data.status !== 200) throw new Error(data.msg || `FinMind ${dataset} 失敗`);
+  return data.data || [];
 }
 
 function enrich(symbol, m){
@@ -225,9 +364,21 @@ function enrich(symbol, m){
 }
 
 function num(v){ if(v===undefined||v===null||v===""||v==="-")return null; const n=Number(String(v).replace(/,/g,"")); return Number.isFinite(n)?n:null; }
+function pickFirstNumber(patterns, text){
+  for(const p of patterns){
+    const m = text.match(p);
+    if(m && m[1]){
+      const n = num(m[1]);
+      if(n && n > 0) return n;
+    }
+  }
+  return null;
+}
+function cleanText(s){ return String(s || "").replace(/<[^>]+>/g,"").replace(/\s+/g," ").trim(); }
 function avg(arr){ return arr.reduce((a,b)=>a+b,0)/arr.length; }
 function round(n){ return Math.round(n*100)/100; }
-function fmt(d){ return d.toISOString().slice(0,10); }
+function today(){ return new Date().toISOString().slice(0,10); }
+function daysAgo(n){ return new Date(Date.now()-n*24*60*60*1000).toISOString().slice(0,10); }
 
 function quoteFreshness(d,t){
   if(!d || !t || String(t).length < 5) {
