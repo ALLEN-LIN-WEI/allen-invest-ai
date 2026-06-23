@@ -4,13 +4,14 @@ const profiles = {
   "2377": { name:"微星", type:"highAI", industry:["AI PC ★★★★☆","電競硬體 ★★★★☆"], base:{fundamental:23, valuation:18, chip:15, technical:15}, retirement:50 },
   "6214": { name:"精誠", type:"growth", industry:["系統整合 ★★★★☆","企業軟體 ★★★☆☆"], base:{fundamental:22, valuation:18, chip:15, technical:15}, retirement:62 },
   "2881": { name:"富邦金", type:"financial", industry:["金融股 ★★★★★","壽險 ★★★★☆"], base:{fundamental:24, valuation:20, chip:17, technical:15}, retirement:88 },
+  "3221": { name:"台嘉碩", type:"growth", industry:["石英元件 ★★★★☆","車用/通訊 ★★★☆☆"], base:{fundamental:20, valuation:17, chip:14, technical:13}, retirement:48 },
   "0050": { name:"元大台灣50", type:"etf", industry:["市值型ETF ★★★★★","台股核心配置 ★★★★★"], base:{fundamental:26, valuation:19, chip:18, technical:16}, retirement:95 }
 };
 
 const detailIndicators = [
 ["基本面","EPS成長性"],["基本面","EPS穩定性"],["基本面","營收成長"],["基本面","毛利率"],["基本面","營益率"],["基本面","ROE"],["基本面","負債比"],["基本面","自由現金流"],
-["估值面","本益比合理性"],["估值面","股價淨值比"],["估值面","殖利率"],["估值面","合理價位置"],["估值面","PEG"],["估值面","安全邊際"],
-["籌碼面","外資5日"],["籌碼面","外資20日"],["籌碼面","投信5日"],["籌碼面","投信20日"],["籌碼面","自營商"],["籌碼面","三大法人一致性"],["籌碼面","融資變化"],["籌碼面","融券變化"],["籌碼面","主力進出"],
+["估值面","本益比合理性"],["估值面","股價淨值比"],["估值面","殖利率"],["估值面","合理價位置"],["估值面","安全邊際"],
+["籌碼面","外資5日"],["籌碼面","外資20日"],["籌碼面","投信5日"],["籌碼面","投信20日"],["籌碼面","自營商"],["籌碼面","三大法人一致性"],["籌碼面","融資變化"],["籌碼面","融券變化"],
 ["技術面","5MA"],["技術面","10MA"],["技術面","20MA"],["技術面","60MA"],["技術面","120MA"],["技術面","KD"],["技術面","RSI"],["技術面","MACD"],["技術面","支撐"],["技術面","壓力"],
 ["風險面","波動率"],["風險面","短線漲幅"],["風險面","大盤連動"],["風險面","系統性風險"]
 ];
@@ -37,6 +38,19 @@ function analyzeStock(market){
   }
   if(market.roe && market.roe > 20) s.fundamental += 2;
 
+  if(market.maReady){
+    if(market.price > market.ma60) s.technical += 2; else s.technical -= 2;
+    if(market.price > market.ma120) s.technical += 2; else s.technical -= 2;
+  }
+  if(market.volumeReady){
+    if(market.volumeRatio >= 1.8 && chg > 0) s.technical += 2;
+    if(market.volumeRatio >= 1.8 && chg < 0) s.technical -= 2;
+  }
+  if(market.institutionalReady){
+    if(market.foreign20d > 0) s.chip += 2; else s.chip -= 1;
+    if(market.trust20d > 0) s.chip += 1;
+  }
+
   s.fundamental = clamp(s.fundamental,0,30);
   s.valuation = clamp(s.valuation,0,25);
   s.chip = clamp(s.chip,0,25);
@@ -47,7 +61,8 @@ function analyzeStock(market){
   const decision = decisionEngine(market,p,total,fair,s);
   const data = dataCompleteness(market);
   const details = detailScores(s, market);
-  return { profile:p, scores:s, total, fair, decision, data, details };
+  const risks = riskLights(s,market);
+  return { profile:p, scores:s, total, fair, decision, data, details, risks };
 }
 
 function clamp(n,min,max){ return Math.max(min,Math.min(max,Math.round(n))); }
@@ -59,7 +74,8 @@ function dataCompleteness(m){
     ["PE", m.pe],
     ["ROE", m.roe],
     ["法人", m.institutionalReady],
-    ["60MA/120MA", m.maReady]
+    ["60MA/120MA", m.maReady],
+    ["量能", m.volumeReady]
   ];
   const ready = fields.filter(([_,v]) => v !== null && v !== undefined && v !== false).length;
   return { score: Math.round(ready/fields.length*100), missing: fields.filter(([_,v])=>v===null||v===undefined||v===false).map(([k])=>k) };
@@ -80,7 +96,7 @@ function fairValue(m,p,total){
 
 function decisionEngine(m,p,total,fair,scores){
   const price = Number(m.price||0);
-  let label, sentence, action, risk;
+  let label, sentence, risk;
   if(total>=90){ label="強力買進"; sentence="條件非常強，可分批布局，但仍避免一次買滿。"; risk="🟢 低"; }
   else if(total>=80){ label="分批布局"; sentence="基本條件良好，可依買點分批布局。"; risk=p.type==="highAI"?"🟡 中":"🟢 中低"; }
   else if(total>=70){ label="觀察買進"; sentence="條件中上，可小量試單，等待更好價格加碼。"; risk="🟡 中"; }
@@ -103,7 +119,16 @@ function decisionEngine(m,p,total,fair,scores){
     shareText = "一般成長股分 3～5 批，不一次買滿。";
   }
 
-  return {label,sentence,action:label,risk,buy1,buy2,buy3,shares,shareText};
+  return {label,sentence,risk,buy1,buy2,buy3,shares,shareText};
+}
+
+function riskLights(s,m){
+  return {
+    fundamental: s.fundamental>=24?"🟢":s.fundamental>=18?"🟡":"🟠",
+    valuation: s.valuation>=20?"🟢":s.valuation>=15?"🟡":"🟠",
+    chip: s.chip>=20?"🟢":s.chip>=14?"🟡":"🟠",
+    technical: s.technical>=16?"🟢":s.technical>=11?"🟡":"🟠"
+  };
 }
 
 function detailScores(scores,m){

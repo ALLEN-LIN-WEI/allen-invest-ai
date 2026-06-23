@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Allen Invest AI Ultimate v9.0</title>
+  <title>Allen Invest AI Final v10</title>
   <link rel="stylesheet" href="assets/css/style.css" />
 </head>
 <body>
@@ -11,44 +11,48 @@
     <div class="brand">
       <span class="logo">A</span>
       <div>
-        <h1>Allen Invest AI Ultimate v9.0</h1>
-        <p>即時行情 × 100分制 × 37項底層評分 × Allen決策引擎</p>
+        <h1>Allen Invest AI Final v10</h1>
+        <p>三層式決策介面｜即時行情 × 60MA/120MA × 量能 × 法人 × Allen評分</p>
       </div>
     </div>
     <nav>
-      <button data-jump="analysis">一鍵分析</button>
-      <button data-jump="details">37項細節</button>
+      <button data-jump="analysis">分析</button>
+      <button data-jump="details">細節</button>
       <button data-jump="watchlist">自選股</button>
     </nav>
   </header>
 
   <main>
     <section class="hero">
-      <div class="hero-copy">
-        <div class="badge">Ultimate v9.0｜前後端格式重新統一</div>
-        <h2>輸入股票代號，直接得到可執行的 Allen 投資決策</h2>
+      <div>
+        <div class="badge">Final v10：乾淨、清楚、可執行</div>
+        <h2>輸入股票代號，直接看 Allen 今天會怎麼做</h2>
         <p>
-          V9.0 保留 37 項作為底層評分依據，但主畫面改為 4 大分數、總分、合理價、買點、建議股數與最終結論。
-          資料不足會標示「待補」，不再誤判為價格偏高。
+          最終版整合：行情校正、60MA/120MA、量能判斷、法人架構、100分制與37項底層評分。
+          首頁只顯示最重要決策；詳細指標預設收合，避免資訊過載。
         </p>
       </div>
+
       <div class="search-card">
         <label>股票代號</label>
         <div class="row">
-          <input id="stockInput" placeholder="例如 2330、2881、6214、0050" />
+          <input id="stockInput" placeholder="例如 2330、2881、6214、3221、0050" />
           <button id="analyzeBtn">Allen 一鍵分析</button>
         </div>
+
         <label>可投資預算（選填）</label>
         <div class="row">
           <input id="budgetInput" type="number" min="0" placeholder="例如 50000" />
           <span>元</span>
         </div>
+
         <div class="chips">
           <button class="chip" data-stock="2330">2330 台積電</button>
           <button class="chip" data-stock="2317">2317 鴻海</button>
           <button class="chip" data-stock="2377">2377 微星</button>
           <button class="chip" data-stock="6214">6214 精誠</button>
           <button class="chip" data-stock="2881">2881 富邦金</button>
+          <button class="chip" data-stock="3221">3221 台嘉碩</button>
           <button class="chip" data-stock="0050">0050 元大台灣50</button>
         </div>
       </div>
@@ -56,11 +60,11 @@
 
     <section id="analysis" class="panel">
       <div class="section-title">
-        <h3>Allen 一鍵分析結果</h3>
-        <p>先看結論，再看買點、部位與細節。</p>
+        <h3>第一層：Allen 最終決策</h3>
+        <p>先看這一區就夠了。</p>
       </div>
 
-      <div id="loading" class="notice hidden">正在取得即時行情並計算 Allen 評分...</div>
+      <div id="loading" class="notice hidden">正在取得行情、均線、量能與法人資料...</div>
       <div id="emptyState" class="empty">請輸入股票代號並按「Allen 一鍵分析」。</div>
 
       <div id="result" class="hidden">
@@ -72,6 +76,7 @@
               <span id="ratingTag" class="tag">--</span>
               <span id="starTag" class="tag">--</span>
               <span id="riskTag" class="tag">--</span>
+              <span id="quoteWarning" class="tag warning hidden">行情可能延遲</span>
             </div>
           </div>
           <div class="score-dial">
@@ -80,55 +85,80 @@
           </div>
         </section>
 
-        <section class="grid-4">
+        <section class="grid-4 compact">
           <article class="metric"><span>股票</span><b id="stockName">--</b><p id="stockMeta">--</p></article>
           <article class="metric"><span>即時股價</span><b id="price">--</b><p id="change">--</p></article>
-          <article class="metric"><span>成交量</span><b id="volume">--</b><p id="updatedAt">--</p></article>
-          <article class="metric"><span>資料來源</span><b id="sourceMode">--</b><p id="sourceText">--</p></article>
+          <article class="metric"><span>Allen 建議</span><b id="sharePlan">--</b><p id="sharePlanText">--</p></article>
+          <article class="metric"><span>關鍵買點</span><b id="mainBuy">--</b><p id="mainBuyText">--</p></article>
         </section>
 
-        <section class="grid-2">
+        <section class="grid-3">
           <article class="card">
             <h4>四大分數</h4>
             <div id="scoreBars"></div>
           </article>
 
           <article class="card">
-            <h4>合理價分析</h4>
-            <div class="fair-box">
-              <div><span>目前股價</span><b id="fairCurrent">--</b></div>
+            <h4>合理價與估值</h4>
+            <div class="info-list">
               <div><span>合理價區間</span><b id="fairRange">--</b></div>
               <div><span>估值燈號</span><b id="valuationLight">--</b></div>
+              <div><span>判讀</span><p id="valuationText">--</p></div>
             </div>
-            <p id="valuationText" class="paragraph"></p>
+          </article>
+
+          <article class="card">
+            <h4>風險燈號</h4>
+            <div class="risk-grid">
+              <div><span>財務</span><b id="riskFundamental">--</b></div>
+              <div><span>估值</span><b id="riskValuation">--</b></div>
+              <div><span>籌碼</span><b id="riskChip">--</b></div>
+              <div><span>技術</span><b id="riskTechnical">--</b></div>
+            </div>
           </article>
         </section>
 
-        <section class="card">
-          <h4>買點與建議股數</h4>
-          <div class="buy-grid">
-            <div class="buy"><span>第一買點</span><b id="buy1">--</b><p id="buy1Text">--</p></div>
-            <div class="buy"><span>第二買點</span><b id="buy2">--</b><p id="buy2Text">--</p></div>
-            <div class="buy"><span>第三買點</span><b id="buy3">--</b><p id="buy3Text">--</p></div>
-            <div class="buy highlight"><span>Allen 建議</span><b id="sharePlan">--</b><p id="sharePlanText">--</p></div>
+        <section class="panel inner">
+          <div class="section-title">
+            <h3>第二層：買點、均線、量能、法人</h3>
+            <p>用來確認是否真的適合進場。</p>
           </div>
-        </section>
 
-        <section class="grid-3">
-          <article class="card">
-            <h4>產業分類</h4>
-            <div id="industryBox"></div>
-          </article>
-          <article class="card">
-            <h4>退休持有適合度</h4>
-            <div class="retire-score"><b id="retireScore">--</b><span id="retireStars">--</span></div>
-            <p id="retireText" class="paragraph"></p>
-          </article>
-          <article class="card">
-            <h4>資料完整度</h4>
-            <div class="retire-score"><b id="dataScore">--</b><span>資料狀態</span></div>
-            <div id="missingBox"></div>
-          </article>
+          <div class="buy-grid">
+            <div class="buy"><span>第一買點</span><b id="buy1">--</b><p>觀察布局</p></div>
+            <div class="buy"><span>第二買點</span><b id="buy2">--</b><p>主要加碼</p></div>
+            <div class="buy"><span>第三買點</span><b id="buy3">--</b><p>積極布局</p></div>
+            <div class="buy highlight"><span>部位策略</span><b id="positionPlan">--</b><p id="positionText">--</p></div>
+          </div>
+
+          <div class="grid-3">
+            <article class="card soft">
+              <h4>均線趨勢</h4>
+              <div class="info-list">
+                <div><span>60MA</span><b id="ma60">--</b></div>
+                <div><span>120MA</span><b id="ma120">--</b></div>
+                <div><span>趨勢判讀</span><p id="maText">--</p></div>
+              </div>
+            </article>
+
+            <article class="card soft">
+              <h4>量能分析</h4>
+              <div class="info-list">
+                <div><span>20日均量</span><b id="avgVolume20">--</b></div>
+                <div><span>量能倍數</span><b id="volumeRatio">--</b></div>
+                <div><span>量價判讀</span><p id="volumeText">--</p></div>
+              </div>
+            </article>
+
+            <article class="card soft">
+              <h4>法人趨勢</h4>
+              <div class="info-list">
+                <div><span>外資20日</span><b id="foreign20">--</b></div>
+                <div><span>投信20日</span><b id="trust20">--</b></div>
+                <div><span>法人判讀</span><p id="institutionText">--</p></div>
+              </div>
+            </article>
+          </div>
         </section>
 
         <section class="card report">
@@ -138,7 +168,7 @@
 
         <section id="details" class="card">
           <details>
-            <summary>查看 37 項底層評分</summary>
+            <summary>第三層：查看 37 項底層評分</summary>
             <div class="table-wrap">
               <table>
                 <thead>
@@ -154,13 +184,31 @@
             </div>
           </details>
         </section>
+
+        <section class="grid-3">
+          <article class="card">
+            <h4>產業分類</h4>
+            <div id="industryBox"></div>
+          </article>
+          <article class="card">
+            <h4>退休持有適合度</h4>
+            <div class="big-number"><b id="retireScore">--</b><span id="retireStars">--</span></div>
+            <p id="retireText"></p>
+          </article>
+          <article class="card">
+            <h4>資料狀態</h4>
+            <div class="big-number"><b id="dataScore">--</b><span>完整度</span></div>
+            <div id="missingBox"></div>
+            <p id="sourceInfo"></p>
+          </article>
+        </section>
       </div>
     </section>
 
     <section id="watchlist" class="panel">
       <div class="section-title">
-        <h3>我的自選股</h3>
-        <p>存在瀏覽器中，不需要登入。</p>
+        <h3>自選股</h3>
+        <p>存在瀏覽器，不需要登入。</p>
       </div>
       <div class="row">
         <input id="watchInput" placeholder="新增股票代號，例如 2881" />
@@ -171,7 +219,7 @@
     </section>
   </main>
 
-  <footer>Allen Invest AI Ultimate v9.0｜研究輔助工具，非投資保證或投顧建議。</footer>
+  <footer>Allen Invest AI Final v10｜研究輔助工具，非投資保證或投顧建議。</footer>
 
   <script src="assets/js/scoring.js"></script>
   <script src="assets/js/app.js"></script>
