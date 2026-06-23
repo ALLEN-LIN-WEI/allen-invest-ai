@@ -36,7 +36,7 @@ function render(m,a){
   $("ratingTag").textContent = a.decision.label;
   $("starTag").textContent = stars(a.total);
   $("riskTag").textContent = `風險 ${a.decision.risk}`;
-  $("quoteWarning").classList.toggle("hidden", !m.quoteWarning);
+  $("quoteWarning").classList.toggle("hidden", !m.quoteWarning);$("quoteWarning").textContent = m.quoteWarningText || "行情可能延遲";
   $("totalScore").textContent = a.total;
   document.querySelector(".score-dial").style.setProperty("--p", `${a.total}%`);
 
@@ -70,9 +70,9 @@ function render(m,a){
   $("avgVolume20").textContent = m.avgVolume20 ? `${money(m.avgVolume20)} 張` : "待補";
   $("volumeRatio").textContent = m.volumeRatio ? `${m.volumeRatio} 倍` : "待補";
   $("volumeText").textContent = m.volumeReady ? volumeText(m) : "量能資料不足，先保守。";
-  $("foreign20").textContent = m.institutionalReady ? money(m.foreign20d) : "待接入";
-  $("trust20").textContent = m.institutionalReady ? money(m.trust20d) : "待接入";
-  $("institutionText").textContent = m.institutionalReady ? "法人資料已納入評分。" : "法人資料為盤後資料，尚未穩定接入。";
+  $("foreign20").textContent = m.institutionalReady ? `${money(m.foreign20d)} 張` : "待接入";
+  $("trust20").textContent = m.institutionalReady ? `${money(m.trust20d)} 張` : "待接入";
+  $("institutionText").textContent = m.institutionalReady ? institutionText(m) : "法人資料為盤後資料，尚未穩定接入。";
 
   $("industryBox").innerHTML = a.profile.industry.map(x=>`<span class="pill">${x}</span>`).join("");
   $("retireScore").textContent = `${a.profile.retirement}`;
@@ -80,7 +80,7 @@ function render(m,a){
   $("retireText").textContent = retirementText(a.profile);
   $("dataScore").textContent = `${a.data.score}%`;
   $("missingBox").innerHTML = a.data.missing.length ? a.data.missing.map(x=>`<span class="pill">${x} 待補</span>`).join("") : `<span class="pill">資料完整</span>`;
-  $("sourceInfo").textContent = `${m.mode || "--"}｜${m.source || "--"}｜${m.updateTime || "--"}`;
+  $("sourceInfo").textContent = `${m.mode || "--"}｜${m.source || "--"}｜${m.updateTime || "--"}｜${m.quoteFreshness || "行情狀態待確認"}`;
 
   renderReport(m,a);
   renderDetails(a.details);
@@ -129,6 +129,16 @@ function volumeText(m){
   if(m.volumeRatio >= 2 && m.changePercent < 0) return "放量下跌，賣壓偏重。";
   if(m.volumeRatio < 0.7) return "低量整理，方向尚未明確。";
   return "量能正常，需搭配價格與均線判斷。";
+}
+function institutionText(m){
+  const f = Number(m.foreign20d || 0);
+  const t = Number(m.trust20d || 0);
+  const d = Number(m.dealer20d || 0);
+  const total = f + t + d;
+  if(total > 0 && f > 0) return "法人20日合計偏買超，外資方向偏多。";
+  if(total > 0) return "法人20日合計偏買超，但需觀察外資是否同步。";
+  if(total < 0) return "法人20日合計偏賣超，籌碼面保守。";
+  return "法人20日買賣超接近中性。";
 }
 function retirementText(p){
   if(p.type==="etf") return "適合長期核心配置，可搭配定期定額或回檔加碼。";

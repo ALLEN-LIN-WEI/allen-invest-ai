@@ -49,6 +49,7 @@ function analyzeStock(market){
   if(market.institutionalReady){
     if(market.foreign20d > 0) s.chip += 2; else s.chip -= 1;
     if(market.trust20d > 0) s.chip += 1;
+    if(market.dealer20d > 0) s.chip += 1;
   }
 
   s.fundamental = clamp(s.fundamental,0,30);
