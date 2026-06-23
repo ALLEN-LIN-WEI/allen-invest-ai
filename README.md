@@ -1,29 +1,12 @@
-## v7.1 修正
-- 修正按下「Allen 一鍵完整分析」時，瀏覽器事件被誤當成股票代號，導致跳出「請輸入股票代號」的問題。
+# Allen Invest AI Ultimate v8.0
 
-# Allen Invest AI v7.1 按鈕修正版
-
-## 功能
-- 台股行情資料源：Netlify Function 後端
-- 成功時顯示 `mode: LIVE_TW`
-- Allen 37項評分卡
-- 100分制評分
-- 第一 / 第二 / 第三買點
-- 建議零股、整張或等待
-- 預算配置
-- 自選股
-- Yahoo / CMoney 參考連結
+## v8.0 重點
+- 37項評分卡改為 A+～D 與紅黃綠燈號
+- 分數判讀改成白話說明
+- 新增「Allen 今天會怎麼做」
+- 新增「為什麼？」原因列表
+- 資料不足不再直接判定為股價偏高
+- 保留台股即時行情 LIVE_TW、買點、建議股數與預算配置
 
 ## 部署
-1. 解壓縮。
-2. 到 GitHub Repository。
-3. 上傳所有檔案與資料夾。
-4. Commit changes。
-5. Netlify 會自動重新部署。
-
-## 測試
-部署後打開：
-
-`/.netlify/functions/stock?symbol=2330`
-
-看到 `mode: LIVE_TW` 代表台股資料源成功。
+解壓縮後，上傳所有檔案到 GitHub Repository，Commit changes，Netlify 會自動重新部署。
