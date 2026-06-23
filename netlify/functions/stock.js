@@ -2,31 +2,45 @@ exports.handler = async (event) => {
   const symbol = (event.queryStringParameters.symbol || "2330").replace(/\D/g, "");
   const budget = Number(event.queryStringParameters.budget || 0);
 
+  // v10.6 核心原則：
+  // 1. 即時 MIS 成功：用最新成交價。
+  // 2. 即時 MIS 失敗：改用 FinMind 最新日收盤價，明確標示「非即時」。
+  // 3. 除非所有資料源都失敗，否則不使用 mock 價格進行買點與估值。
+  // 4. 技術面、量能、法人分開抓，不因即時行情失敗而全部失效。
+
+  let market;
   try {
-    const live = await getTaiwanMarket(symbol);
-    const enriched = enrich(symbol, live);
-    const tech = await getTechnical(symbol, enriched);
-    const inst = await getInstitutional(symbol);
-    return json({ ...enriched, ...tech, ...inst, budget });
-  } catch (error) {
-    const fallback = enrich(symbol, mockMarket(symbol));
-    return json({
-      ...fallback,
-      budget,
-      maReady:false,
-      volumeReady:false,
-      institutionalReady:false,
-      foreign20d:null,
-      trust20d:null,
-      dealer20d:null,
-      quoteWarning:true,
-      quoteWarningText:"即時行情失敗，使用備用資料",
-      quoteFreshness:"備用資料",
-      mode:"MOCK_FALLBACK",
-      source:"示範資料",
-      notice:`即時行情暫時失敗：${error.message}`
-    });
+    market = await getTaiwanMarket(symbol);
+  } catch (liveError) {
+    try {
+      market = await getLatestDailyPrice(symbol, liveError.message);
+    } catch (dailyError) {
+      market = {
+        symbol,
+        name: stockName(symbol),
+        price:null,
+        changePercent:null,
+        volume:null,
+        updateTime:new Date().toLocaleString("zh-TW", {timeZone:"Asia/Taipei"}),
+        quoteWarning:true,
+        quoteWarningText:"無法取得可靠股價，請以券商報價為準",
+        quoteFreshness:"🔴 無可靠行情",
+        market:null,
+        mode:"NO_PRICE",
+        source:"無可靠資料",
+        notice:`即時與日K資料皆失敗：${dailyError.message}`
+      };
+    }
   }
+
+  const enriched = enrich(symbol, market);
+
+  const [tech, inst] = await Promise.all([
+    getTechnical(symbol, enriched),
+    getInstitutional(symbol)
+  ]);
+
+  return json({ ...enriched, ...tech, ...inst, budget });
 };
 
 async function getTaiwanMarket(symbol){
@@ -34,21 +48,25 @@ async function getTaiwanMarket(symbol){
     {prefix:"tse", source:"TWSE MIS 台股資料源"},
     {prefix:"otc", source:"TPEx MIS 上櫃資料源"}
   ];
+
   for(const ch of channels){
     const exCh = `${ch.prefix}_${symbol}.tw`;
     const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${exCh}&json=1&delay=0&_=${Date.now()}`;
     try{
-      const res = await fetch(url,{headers:{"User-Agent":"Mozilla/5.0","Referer":"https://mis.twse.com.tw/stock/fibest.jsp"}});
+      const res = await fetch(url,{
+        headers:{
+          "User-Agent":"Mozilla/5.0",
+          "Referer":"https://mis.twse.com.tw/stock/fibest.jsp",
+          "Accept":"application/json,text/plain,*/*"
+        }
+      });
       const data = await res.json();
       const item = data?.msgArray?.[0];
       if(!item) continue;
 
-      // v10.5 重要修正：
-      // 僅接受 item.z 最新成交價。若 z 為 "-"，不要退回昨收/開盤價，避免誤判即時價格。
+      // 僅接受最新成交價 z；z 為 "-" 時，不退回開盤價/昨收，避免產生錯誤即時價。
       const latest = num(item.z);
-      if(!latest || latest <= 0) {
-        continue;
-      }
+      if(!latest || latest <= 0) continue;
 
       const prev = num(item.y);
       const changePercent = prev ? Math.round(((latest-prev)/prev)*10000)/100 : null;
@@ -74,15 +92,48 @@ async function getTaiwanMarket(symbol){
   throw new Error(`${symbol} 查無有效最新成交價`);
 }
 
+async function getLatestDailyPrice(symbol, liveErrorMessage){
+  const end = new Date();
+  const start = new Date(Date.now() - 14*24*60*60*1000);
+  const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${symbol}&start_date=${fmt(start)}&end_date=${fmt(end)}`;
+  const res = await fetch(url, {headers:{"Accept":"application/json"}});
+  const data = await res.json();
+  const rows = (data.data || []).filter(r => r.close).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  if(!rows.length) throw new Error(`FinMind 查無 ${symbol} 最新日K`);
+  const last = rows[rows.length-1];
+  const prev = rows.length >= 2 ? rows[rows.length-2] : null;
+  const price = Number(last.close);
+  const prevClose = prev ? Number(prev.close) : null;
+  const changePercent = prevClose ? Math.round(((price-prevClose)/prevClose)*10000)/100 : null;
+
+  return {
+    symbol,
+    name:stockName(symbol),
+    price,
+    changePercent,
+    volume:last.Trading_Volume ? Math.round(Number(last.Trading_Volume)/1000) : null,
+    updateTime:`${last.date} 收盤`,
+    quoteWarning:true,
+    quoteWarningText:"即時行情失敗，改用最近一日收盤價",
+    quoteFreshness:"🟡 非即時收盤價",
+    market:null,
+    mode:"DELAYED_DAILY",
+    source:"FinMind 最新日K收盤價",
+    notice:`即時 MIS 失敗，已改用日K收盤價。原因：${liveErrorMessage}`
+  };
+}
+
 async function getTechnical(symbol, market){
   try{
     const end = new Date();
-    const start = new Date(Date.now() - 240*24*60*60*1000);
+    const start = new Date(Date.now() - 260*24*60*60*1000);
     const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${symbol}&start_date=${fmt(start)}&end_date=${fmt(end)}`;
-    const res = await fetch(url);
+    const res = await fetch(url, {headers:{"Accept":"application/json"}});
     const data = await res.json();
-    const rows = (data.data || []).filter(r => r.close && r.Trading_Volume).slice(-150);
-    if(rows.length < 120) return {maReady:false, volumeReady:false};
+    const rows = (data.data || []).filter(r => r.close && r.Trading_Volume).sort((a,b)=>String(a.date).localeCompare(String(b.date))).slice(-150);
+    if(rows.length < 120) {
+      return {maReady:false, volumeReady:false, technicalNotice:`日K筆數不足：${rows.length}/120`};
+    }
 
     const closes = rows.map(r => Number(r.close));
     const vols = rows.map(r => Number(r.Trading_Volume)/1000);
@@ -98,22 +149,23 @@ async function getTechnical(symbol, market){
       avgVolume20:Math.round(avgVolume20),
       volumeRatio,
       maReady:true,
-      volumeReady:!!volumeRatio
+      volumeReady:!!volumeRatio,
+      technicalSource:"FinMind TaiwanStockPrice"
     };
   }catch(e){
-    return {maReady:false, volumeReady:false};
+    return {maReady:false, volumeReady:false, technicalNotice:`技術資料失敗：${e.message}`};
   }
 }
 
 async function getInstitutional(symbol){
   try{
     const end = new Date();
-    const start = new Date(Date.now() - 45*24*60*60*1000);
+    const start = new Date(Date.now() - 55*24*60*60*1000);
     const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id=${symbol}&start_date=${fmt(start)}&end_date=${fmt(end)}`;
-    const res = await fetch(url);
+    const res = await fetch(url, {headers:{"Accept":"application/json"}});
     const data = await res.json();
-    const rows = (data.data || []).slice(-200);
-    if(!rows.length) return institutionalEmpty();
+    const rows = (data.data || []).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    if(!rows.length) return institutionalEmpty("FinMind 無法人資料或免費額度限制");
 
     const byDate = {};
     for(const r of rows){
@@ -127,7 +179,7 @@ async function getInstitutional(symbol){
     }
 
     const days = Object.keys(byDate).sort().slice(-20);
-    if(!days.length) return institutionalEmpty();
+    if(!days.length) return institutionalEmpty("法人資料日期不足");
 
     const sum = days.reduce((acc,d)=>{
       acc.foreign += byDate[d].foreign || 0;
@@ -136,7 +188,7 @@ async function getInstitutional(symbol){
       return acc;
     },{foreign:0,trust:0,dealer:0});
 
-    // FinMind 法人買賣超單位依資料源可能為股，這裡轉成張估算。
+    // FinMind 該資料集通常為股數，轉為張。
     return {
       institutionalReady:true,
       foreign20d:Math.round(sum.foreign/1000),
@@ -145,17 +197,17 @@ async function getInstitutional(symbol){
       institutionalSource:"FinMind 盤後法人資料"
     };
   }catch(e){
-    return institutionalEmpty();
+    return institutionalEmpty(`法人資料失敗：${e.message}`);
   }
 }
 
-function institutionalEmpty(){
+function institutionalEmpty(reason){
   return {
     institutionalReady:false,
     foreign20d:null,
     trust20d:null,
     dealer20d:null,
-    institutionalSource:"法人資料尚未取得"
+    institutionalSource:reason || "法人資料尚未取得"
   };
 }
 
@@ -181,7 +233,6 @@ function quoteFreshness(d,t){
   if(!d || !t || String(t).length < 5) {
     return {warning:true, label:"行情時間待確認", text:"行情時間待確認"};
   }
-
   const taipeiNow = new Date(new Date().toLocaleString("en-US", {timeZone:"Asia/Taipei"}));
   const year = Number(d.slice(0,4));
   const month = Number(d.slice(4,6)) - 1;
@@ -202,16 +253,4 @@ function formatTime(d,t){ if(!d||!t)return new Date().toLocaleString("zh-TW",{ti
 function json(data){ return {statusCode:200,headers:{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*"},body:JSON.stringify(data)}; }
 function stockName(symbol){
   return {"2330":"台積電","2317":"鴻海","2377":"微星","6214":"精誠","2881":"富邦金","3221":"台嘉碩","0050":"元大台灣50"}[symbol] || "台股個股";
-}
-function mockMarket(symbol){
-  const d = {
-    "2330": {name:"台積電", price:1145, changePercent:1.2, volume:32541},
-    "2317": {name:"鴻海", price:216, changePercent:0.8, volume:58210},
-    "2377": {name:"微星", price:188, changePercent:-0.4, volume:12600},
-    "6214": {name:"精誠", price:141, changePercent:0.5, volume:4300},
-    "2881": {name:"富邦金", price:141, changePercent:0.2, volume:22000},
-    "3221": {name:"台嘉碩", price:55.9, changePercent:0, volume:3000},
-    "0050": {name:"元大台灣50", price:210, changePercent:0.3, volume:18000}
-  }[symbol] || {name:"台股個股", price:100, changePercent:0, volume:0};
-  return {symbol, ...d, updateTime:new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei"}), quoteWarning:true, quoteWarningText:"備用資料", quoteFreshness:"備用資料"};
 }
