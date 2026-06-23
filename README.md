@@ -1,12 +1,28 @@
-# Allen Invest AI Ultimate v8.0
+# Allen Invest AI Ultimate Edition
 
-## v8.0 重點
-- 37項評分卡改為 A+～D 與紅黃綠燈號
-- 分數判讀改成白話說明
-- 新增「Allen 今天會怎麼做」
-- 新增「為什麼？」原因列表
-- 資料不足不再直接判定為股價偏高
-- 保留台股即時行情 LIVE_TW、買點、建議股數與預算配置
+## 一次完成的終極架構
+這版不是單純 UI 改版，而是把 Allen股票分析GPT 的核心架構一次整理完成：
 
-## 部署
-解壓縮後，上傳所有檔案到 GitHub Repository，Commit changes，Netlify 會自動重新部署。
+1. 即時股價：Netlify Function 取得台股行情。
+2. 基本面：EPS、PE、ROE 欄位已預留，並可用靜態資料庫補值。
+3. 籌碼面：法人欄位已預留。
+4. 技術面：60MA / 120MA 欄位已預留。
+5. 合理價模型：成長股、金融股、ETF 三種模式。
+6. Allen 決策引擎：強力分批、分批布局、小量試單、觀察等待、暫避。
+7. AI 報告：自動產生投資報告與原因列表。
+
+## 部署方式
+解壓縮後，將以下檔案覆蓋到 GitHub repo：
+
+- index.html
+- assets/
+- netlify/
+- netlify.toml
+- README.md
+
+Commit 後 Netlify 會自動部署。
+
+## 測試 API
+`/.netlify/functions/stock?symbol=2330`
+
+看到 `mode: LIVE_TW` 代表即時台股行情成功。

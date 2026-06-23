@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Allen Invest AI Ultimate v8.0</title>
+  <title>Allen Invest AI Ultimate Edition</title>
   <link rel="stylesheet" href="assets/css/style.css" />
 </head>
 <body>
@@ -13,23 +13,24 @@
         <span class="logo">A</span>
         <div>
           <h1>Allen Invest AI Ultimate</h1>
-          <p>v8.0｜37項評分 × 即時股價 × Allen決策引擎</p>
+          <p>Ultimate Edition｜即時股價 × EPS × 法人 × 均線 × 合理價 × AI報告</p>
         </div>
       </div>
       <div class="nav-actions">
         <button class="ghost" data-target="analyze">一鍵分析</button>
         <button class="ghost" data-target="watchlist">自選股</button>
-        <button class="ghost" data-target="guide">後端狀態</button>
+        <button class="ghost" data-target="architecture">終極架構</button>
       </div>
     </nav>
 
     <section class="hero-content">
       <div>
-        <div class="badge">Ultimate v8.0：把分數翻譯成人話</div>
-        <h2>輸入股票代號，一眼看懂該買、該等、還是避開</h2>
+        <div class="badge">Ultimate Edition：不再只是回檔試算，而是完整決策引擎</div>
+        <h2>輸入股票代號，產生 Allen AI 投資報告</h2>
         <p>
-          v8.0 將 37 項指標改成 A+～D 評級、紅黃綠燈號與白話判讀。
-          系統會取得台股行情，計算買點與建議部位，並輸出 Allen 最終一句話。
+          終極版把你的 Allen股票分析GPT 框架整理成完整網站架構：
+          即時股價、EPS、法人、60MA/120MA、合理價模型、買點、部位建議與 AI 報告。
+          目前先用台股即時行情 + 可擴充資料庫運作，缺少資料會明確標示，不會亂判定偏高。
         </p>
       </div>
 
@@ -37,7 +38,7 @@
         <label>股票代號</label>
         <div class="search-row">
           <input id="stockInput" placeholder="例如：2330、6214、2377、2881、0050" />
-          <button id="analyzeBtn">Allen 一鍵完整分析</button>
+          <button id="analyzeBtn">Allen AI 一鍵完整分析</button>
         </div>
 
         <label class="budget-label">可投資預算（選填）</label>
@@ -61,18 +62,18 @@
   <main>
     <section id="analyze" class="panel">
       <div class="section-title">
-        <h3>Allen 一鍵完整分析</h3>
-        <p>先看結論，再看原因。分數只是輔助，最重要是可執行策略。</p>
+        <h3>Allen AI 一鍵完整分析</h3>
+        <p>先看最終結論，再看分數、原因與資料完整度。</p>
       </div>
 
-      <div id="loading" class="loading hidden">正在取得台股行情並執行 Allen Ultimate 分析...</div>
-      <div id="emptyState" class="empty">請輸入股票代號並按「Allen 一鍵完整分析」。</div>
+      <div id="loading" class="loading hidden">正在取得台股行情、讀取資料庫並產生 Allen AI 投資報告...</div>
+      <div id="emptyState" class="empty">請輸入股票代號並按「Allen AI 一鍵完整分析」。</div>
 
       <div id="result" class="result-grid hidden">
         <article class="decision-card wide">
           <div class="decision-head">
             <div>
-              <p class="muted">Allen 今天會怎麼做？</p>
+              <p class="muted">Allen 最終一句話</p>
               <h2 id="oneLineDecision">等待分析</h2>
             </div>
             <div id="decisionBadge" class="decision-badge">--</div>
@@ -94,6 +95,11 @@
               <b id="finalAction">--</b>
               <p id="finalActionText">--</p>
             </div>
+            <div class="traffic-card">
+              <span>資料完整度</span>
+              <b id="dataScore">--</b>
+              <p id="dataText">--</p>
+            </div>
           </div>
 
           <div class="price-strip">
@@ -102,34 +108,22 @@
             <div><span>成交量</span><b id="volume">--</b></div>
             <div><span>更新時間</span><b id="updateTime">--</b></div>
           </div>
-
-          <div class="decision-grid">
-            <div class="decision-box">
-              <span>估值判斷</span>
-              <b id="valuationText">--</b>
-              <p id="valuationDetail">--</p>
-            </div>
-            <div class="decision-box">
-              <span>操作策略</span>
-              <b id="actionText">--</b>
-              <p id="actionDetail">--</p>
-            </div>
-            <div class="decision-box">
-              <span>建議部位</span>
-              <b id="positionText">--</b>
-              <p id="positionDetail">--</p>
-            </div>
-          </div>
         </article>
 
         <article class="module-card wide">
-          <h4>建議買點與預算配置</h4>
+          <h4>合理價與買點</h4>
           <div class="buy-grid">
+            <div class="buy-card"><span>Allen 合理價</span><b id="fairRange">--</b><p id="fairText">--</p></div>
             <div class="buy-card"><span>第一買點</span><b id="buy1">--</b><p>輕倉 / 觀察部位</p></div>
             <div class="buy-card"><span>第二買點</span><b id="buy2">--</b><p>分批布局區</p></div>
             <div class="buy-card"><span>第三買點</span><b id="buy3">--</b><p>積極布局區</p></div>
             <div class="buy-card highlight"><span>建議先買</span><b id="sharesNow">--</b><p id="budgetPlan">--</p></div>
           </div>
+        </article>
+
+        <article class="module-card wide">
+          <h4>Allen AI 投資報告</h4>
+          <div id="reportBox" class="report-box"></div>
         </article>
 
         <article class="score-main">
@@ -173,7 +167,7 @@
           <div class="legend">
             <span>🟢 A+/A 優秀</span>
             <span>🟡 B 普通</span>
-            <span>🟠 C 偏弱</span>
+            <span>🟠 C 待確認/偏弱</span>
             <span>🔴 D 風險</span>
           </div>
           <div class="table-wrap">
@@ -194,16 +188,11 @@
         <article class="module-card">
           <h4>資料來源狀態</h4>
           <div id="sourceBox"></div>
-          <p class="note">LIVE_TW 代表已取得台股行情；若為 MOCK_FALLBACK，代表暫用示範資料。</p>
         </article>
 
         <article class="module-card">
-          <h4>Allen 操作原則</h4>
-          <ul class="tips">
-            <li>高價 AI 熱門股：先用 10～20 股零股試單，不追高。</li>
-            <li>金融股、ETF、低價股：評分高且估值合理，可整張分批。</li>
-            <li>資料不足不等於偏高，會標示為「等待確認」。</li>
-          </ul>
+          <h4>待補強資料</h4>
+          <div id="missingBox"></div>
         </article>
       </div>
     </section>
@@ -221,19 +210,24 @@
       <div id="watchlistBox" class="cards"></div>
     </section>
 
-    <section id="guide" class="panel">
+    <section id="architecture" class="panel">
       <div class="section-title">
-        <h3>後端 API 測試</h3>
-        <p>部署後可用以下路徑確認後端是否正常。</p>
+        <h3>Ultimate Edition 終極架構</h3>
+        <p>這版已把未來需要的資料欄位和決策引擎一次建好。</p>
       </div>
-      <div class="code-card">
-        <code>/.netlify/functions/stock?symbol=2330</code>
+      <div class="architecture-grid">
+        <div class="arch-card"><h4>1. 即時行情</h4><p>台股 MIS 行情、股價、漲跌幅、成交量。</p></div>
+        <div class="arch-card"><h4>2. 基本面</h4><p>EPS、ROE、營收、毛利率、負債比、自由現金流。</p></div>
+        <div class="arch-card"><h4>3. 籌碼面</h4><p>外資、投信、自營商、三大法人一致性。</p></div>
+        <div class="arch-card"><h4>4. 技術面</h4><p>5MA、10MA、20MA、60MA、120MA、量價關係。</p></div>
+        <div class="arch-card"><h4>5. 合理價</h4><p>成長股、金融股、ETF 三種估值模型。</p></div>
+        <div class="arch-card"><h4>6. AI報告</h4><p>整理成 Allen 最終投資報告。</p></div>
       </div>
     </section>
   </main>
 
   <footer>
-    <p>Allen Invest AI Ultimate v8.0｜研究輔助工具，非投資保證或投顧建議。</p>
+    <p>Allen Invest AI Ultimate Edition｜研究輔助工具，非投資保證或投顧建議。</p>
   </footer>
 
   <script src="assets/js/scoring.js"></script>
