@@ -1,210 +1,129 @@
-const indicators = [
-["基本面","EPS成長性"],["基本面","EPS穩定性"],["基本面","本益比合理性"],["基本面","營收年增率"],["基本面","毛利率趨勢"],["基本面","營業利益率"],["基本面","自由現金流"],["基本面","負債比率"],["基本面","ROE"],["基本面","產業成長性"],
-["籌碼面","外資買賣超趨勢"],["籌碼面","投信持續性"],["籌碼面","自營商方向"],["籌碼面","三大法人一致性"],["籌碼面","融資變化"],["籌碼面","融券變化"],["籌碼面","大戶集中度"],["籌碼面","主力進出跡象"],["籌碼面","券資比變化"],["籌碼面","籌碼穩定性"],
-["技術面","均線排列"],["技術面","5日線趨勢"],["技術面","10日線趨勢"],["技術面","20日線（月線）"],["技術面","60日線（季線）"],["技術面","120日線（半年線）"],["技術面","KD指標"],["技術面","RSI強弱"],["技術面","MACD"],["技術面","壓力突破"],["技術面","支撐強度"],
-["量價","放量上漲"],["量價","放量下跌"],["量價","量縮整理"],["風險","波動率"],["風險","歷史高檔風險"],["風險","大盤連動性"],["風險","系統性風險"]
-];
-
-const moduleMax = {"基本面":30,"籌碼面":25,"技術面":25,"量價":10,"風險":10};
-
-const stockProfiles = {
-  "2330": {name:"台積電", type:"highAI", growth:"高", baseScore:84, fairMethod:"成長股模式"},
-  "2317": {name:"鴻海", type:"growth", growth:"中高", baseScore:78, fairMethod:"成長股模式"},
-  "2377": {name:"微星", type:"highAI", growth:"中高", baseScore:74, fairMethod:"成長股模式"},
-  "6214": {name:"精誠", type:"growth", growth:"中", baseScore:72, fairMethod:"成長股模式"},
-  "2881": {name:"富邦金", type:"financial", growth:"中", baseScore:77, fairMethod:"金融股模式"},
-  "2303": {name:"聯電", type:"growth", growth:"中", baseScore:68, fairMethod:"成長股模式"},
-  "6274": {name:"台燿", type:"highAI", growth:"高", baseScore:79, fairMethod:"成長股模式"},
-  "3037": {name:"欣興", type:"highAI", growth:"高", baseScore:75, fairMethod:"成長股模式"},
-  "0050": {name:"元大台灣50", type:"etf", growth:"中", baseScore:81, fairMethod:"ETF模式"},
-  "00918": {name:"大華優利高填息30", type:"etf", growth:"中", baseScore:73, fairMethod:"ETF模式"}
+const profiles = {
+  "2330": { name:"台積電", type:"highAI", industry:["AI供應鏈 ★★★★★","晶圓代工 ★★★★★","CoWoS ★★★★☆"], base:{fundamental:28, valuation:20, chip:18, technical:17}, retirement:55 },
+  "2317": { name:"鴻海", type:"growth", industry:["AI伺服器 ★★★★☆","電動車 ★★★☆☆","代工製造 ★★★★★"], base:{fundamental:24, valuation:19, chip:17, technical:16}, retirement:68 },
+  "2377": { name:"微星", type:"highAI", industry:["AI PC ★★★★☆","電競硬體 ★★★★☆"], base:{fundamental:23, valuation:18, chip:15, technical:15}, retirement:50 },
+  "6214": { name:"精誠", type:"growth", industry:["系統整合 ★★★★☆","企業軟體 ★★★☆☆"], base:{fundamental:22, valuation:18, chip:15, technical:15}, retirement:62 },
+  "2881": { name:"富邦金", type:"financial", industry:["金融股 ★★★★★","壽險 ★★★★☆"], base:{fundamental:24, valuation:20, chip:17, technical:15}, retirement:88 },
+  "0050": { name:"元大台灣50", type:"etf", industry:["市值型ETF ★★★★★","台股核心配置 ★★★★★"], base:{fundamental:26, valuation:19, chip:18, technical:16}, retirement:95 }
 };
 
-function getProfile(code){return stockProfiles[code]||{name:"台股個股",type:"growth",growth:"中",baseScore:66,fairMethod:"成長股模式"};}
+const detailIndicators = [
+["基本面","EPS成長性"],["基本面","EPS穩定性"],["基本面","營收成長"],["基本面","毛利率"],["基本面","營益率"],["基本面","ROE"],["基本面","負債比"],["基本面","自由現金流"],
+["估值面","本益比合理性"],["估值面","股價淨值比"],["估值面","殖利率"],["估值面","合理價位置"],["估值面","PEG"],["估值面","安全邊際"],
+["籌碼面","外資5日"],["籌碼面","外資20日"],["籌碼面","投信5日"],["籌碼面","投信20日"],["籌碼面","自營商"],["籌碼面","三大法人一致性"],["籌碼面","融資變化"],["籌碼面","融券變化"],["籌碼面","主力進出"],
+["技術面","5MA"],["技術面","10MA"],["技術面","20MA"],["技術面","60MA"],["技術面","120MA"],["技術面","KD"],["技術面","RSI"],["技術面","MACD"],["技術面","支撐"],["技術面","壓力"],
+["風險面","波動率"],["風險面","短線漲幅"],["風險面","大盤連動"],["風險面","系統性風險"]
+];
 
-function scoreStock(code, market){
-  const profile=getProfile(code);
-  let baseScore=profile.baseScore;
-  const chg=Number(market.changePercent);
+function stockProfile(symbol){ return profiles[symbol] || { name:"台股個股", type:"growth", industry:["一般台股 ★★★☆☆"], base:{fundamental:20, valuation:16, chip:13, technical:13}, retirement:55 }; }
+function money(n){ if(n===null||n===undefined||isNaN(n)) return "--"; return Number(n).toLocaleString("zh-TW",{maximumFractionDigits:2}); }
+function stars(score){ if(score>=90)return"★★★★★"; if(score>=80)return"★★★★☆"; if(score>=70)return"★★★☆☆"; if(score>=60)return"★★☆☆☆"; return"★☆☆☆☆"; }
+
+function analyzeStock(market){
+  const p = stockProfile(market.symbol);
+  const chg = Number(market.changePercent);
+  const s = {...p.base};
 
   if(Number.isFinite(chg)){
-    if(chg>=5) baseScore-=6;
-    else if(chg>=3) baseScore-=3;
-    else if(chg<=-4) baseScore+=4;
-    else if(chg<=-2) baseScore+=2;
+    if(chg >= 5){ s.valuation -= 3; s.technical -= 2; }
+    else if(chg >= 3){ s.valuation -= 2; s.technical -= 1; }
+    else if(chg <= -4){ s.valuation += 2; }
+    else if(chg <= -2){ s.valuation += 1; }
   }
-
   if(market.pe){
-    if(market.pe>35) baseScore-=6;
-    else if(market.pe>25) baseScore-=3;
-    else if(market.pe<15) baseScore+=3;
+    if(market.pe < 15) s.valuation += 2;
+    else if(market.pe > 30) s.valuation -= 3;
+    else if(market.pe > 24) s.valuation -= 1;
   }
+  if(market.roe && market.roe > 20) s.fundamental += 2;
 
-  const dataCompleteness = calcDataCompleteness(market);
-  if(dataCompleteness.score < 45) baseScore -= 2;
+  s.fundamental = clamp(s.fundamental,0,30);
+  s.valuation = clamp(s.valuation,0,25);
+  s.chip = clamp(s.chip,0,25);
+  s.technical = clamp(s.technical,0,20);
 
-  baseScore=Math.max(45,Math.min(94,Math.round(baseScore)));
-
-  const moduleRatio={"基本面":0.30,"籌碼面":0.25,"技術面":0.25,"量價":0.10,"風險":0.10};
-  const modules={};
-  Object.entries(moduleRatio).forEach(([k,r])=>{
-    let v=baseScore*r;
-    if(k==="技術面"&&Number.isFinite(chg)){ if(chg>3)v-=1.2; if(chg<-2)v+=0.8; }
-    if(k==="風險"&&profile.type==="highAI")v-=0.8;
-    modules[k]=Math.max(0,Math.min(moduleMax[k],Math.round(v*10)/10));
-  });
-
-  const total=Math.round(Object.values(modules).reduce((a,b)=>a+b,0));
-  const rows=indicators.map(([module,name])=>{
-    const modulePct=modules[module]/moduleMax[module];
-    let raw=Math.round(modulePct*3);
-    raw=Math.max(1,Math.min(3,raw));
-    let dataMissing=false;
-    if(name.includes("本益比")&&!market.pe){ raw=1; dataMissing=true; }
-    if(name.includes("EPS")&&!market.eps){ raw=1; dataMissing=true; }
-    if(name.includes("ROE")&&!market.roe){ raw=1; dataMissing=true; }
-    if(name.includes("外資")||name.includes("投信")||name.includes("法人")){ if(!market.institutionalReady){raw=1; dataMissing=true;} }
-    if(name.includes("60日")||name.includes("120日")||name.includes("均線")){ if(!market.maReady){raw=1; dataMissing=true;} }
-    const grade=itemGrade(raw,dataMissing);
-    return {module,name,raw,grade:grade.label,gradeClass:grade.className,text:itemPlainText(name,raw,dataMissing)};
-  });
-
-  const fair = fairValueModel(market, profile, total);
-  const decision=makeDecision(code,total,modules,market,profile,fair,dataCompleteness);
-  return {rows,modules,total,profile,decision,fair,dataCompleteness};
+  const total = Math.round(s.fundamental+s.valuation+s.chip+s.technical);
+  const fair = fairValue(market,p,total);
+  const decision = decisionEngine(market,p,total,fair,s);
+  const data = dataCompleteness(market);
+  const details = detailScores(s, market);
+  return { profile:p, scores:s, total, fair, decision, data, details };
 }
 
-function calcDataCompleteness(market){
-  const fields=[
-    ["即時股價", market.price],
-    ["EPS", market.eps],
-    ["本益比", market.pe],
-    ["ROE", market.roe],
-    ["法人籌碼", market.institutionalReady],
-    ["60MA/120MA", market.maReady]
+function clamp(n,min,max){ return Math.max(min,Math.min(max,Math.round(n))); }
+
+function dataCompleteness(m){
+  const fields = [
+    ["即時股價", m.price],
+    ["EPS", m.eps],
+    ["PE", m.pe],
+    ["ROE", m.roe],
+    ["法人", m.institutionalReady],
+    ["60MA/120MA", m.maReady]
   ];
-  const ready=fields.filter(([_,v])=>v!==null&&v!==undefined&&v!==false).length;
-  const score=Math.round(ready/fields.length*100);
-  const missing=fields.filter(([_,v])=>v===null||v===undefined||v===false).map(([k])=>k);
-  return {score,missing};
+  const ready = fields.filter(([_,v]) => v !== null && v !== undefined && v !== false).length;
+  return { score: Math.round(ready/fields.length*100), missing: fields.filter(([_,v])=>v===null||v===undefined||v===false).map(([k])=>k) };
 }
 
-function fairValueModel(market, profile, total){
-  const price=Number(market.price||0);
-  if(!price) return {low:null,high:null,text:"缺少股價，無法估算合理價。",method:profile.fairMethod};
-  let low, high, text;
-  if(profile.type==="financial"){
-    low=price*0.94; high=price*1.06;
-    text="金融股以股價淨值比、殖利率與獲利穩定度判斷；目前先用保守區間估算。";
-  }else if(profile.type==="etf"){
-    low=price*0.97; high=price*1.03;
-    text="ETF應以淨值、折溢價與成分股風險判斷；目前先用接近市價的區間估算。";
+function fairValue(m,p,total){
+  const price = Number(m.price||0);
+  if(!price) return {low:null,mid:null,high:null,light:"🟠 待確認",text:"缺少價格，無法估算。"};
+  let low, mid, high;
+  if(p.type==="financial"){ mid=price*0.98; low=mid*0.94; high=mid*1.06; }
+  else if(p.type==="etf"){ mid=price; low=mid*0.97; high=mid*1.03; }
+  else { mid=price*(total>=80?1.03:total>=70?1.00:0.96); low=mid*0.93; high=mid*1.07; }
+  const diff = (price-mid)/mid*100;
+  let light = Math.abs(diff)<=5 ? "🟡 合理" : diff < -5 ? "🟢 便宜" : "🔴 偏高";
+  let text = `目前股價相對合理價中位數約 ${diff>=0?"+":""}${diff.toFixed(1)}%。`;
+  return {low,mid,high,light,text};
+}
+
+function decisionEngine(m,p,total,fair,scores){
+  const price = Number(m.price||0);
+  let label, sentence, action, risk;
+  if(total>=90){ label="強力買進"; sentence="條件非常強，可分批布局，但仍避免一次買滿。"; risk="🟢 低"; }
+  else if(total>=80){ label="分批布局"; sentence="基本條件良好，可依買點分批布局。"; risk=p.type==="highAI"?"🟡 中":"🟢 中低"; }
+  else if(total>=70){ label="觀察買進"; sentence="條件中上，可小量試單，等待更好價格加碼。"; risk="🟡 中"; }
+  else if(total>=60){ label="等待回檔"; sentence="條件尚可但不夠完整，等待回檔或資料補強。"; risk="🟠 注意"; }
+  else { label="避免進場"; sentence="條件不足，暫時不建議買進。"; risk="🔴 高"; }
+
+  const buy1 = price ? price*(total>=80?0.97:0.95) : null;
+  const buy2 = price ? price*(total>=80?0.93:0.90) : null;
+  const buy3 = price ? price*(total>=80?0.88:0.85) : null;
+
+  let shares, shareText;
+  if(p.type==="highAI"){
+    shares = total>=80 ? "先買 20 股" : total>=70 ? "先買 10 股" : "先觀察";
+    shareText = "高價 AI 股用零股試單，等第二買點再加碼。";
+  }else if(p.type==="financial" || p.type==="etf"){
+    shares = total>=80 ? "可先買 1 張" : total>=70 ? "可先買 500 股" : "先觀察";
+    shareText = "金融股/ETF適合整張分批，但仍要避開短線追高。";
   }else{
-    const premium=profile.growth==="高"?1.10:profile.growth==="中高"?1.06:1.02;
-    low=price*(total>=80?0.97:0.92);
-    high=price*premium;
-    text="成長股以 EPS、PE、成長率與產業趨勢判斷；資料不足時採保守估算。";
+    shares = total>=80 ? "先買 100 股" : total>=70 ? "先買 20 股" : "先觀察";
+    shareText = "一般成長股分 3～5 批，不一次買滿。";
   }
-  return {low,high,text,method:profile.fairMethod};
+
+  return {label,sentence,action:label,risk,buy1,buy2,buy3,shares,shareText};
 }
 
-function itemGrade(raw,missing){
-  if(missing) return {label:"C｜待確認", className:"grade-c"};
-  if(raw>=3) return {label:"A｜優秀", className:"grade-a"};
-  if(raw===2) return {label:"B｜普通", className:"grade-b"};
-  if(raw===1) return {label:"C｜偏弱", className:"grade-c"};
-  return {label:"D｜風險", className:"grade-d"};
+function detailScores(scores,m){
+  return detailIndicators.map(([module,name])=>{
+    let val = 2;
+    if(module==="基本面") val = scores.fundamental>=25?3:scores.fundamental>=20?2:1;
+    if(module==="估值面") val = scores.valuation>=20?3:scores.valuation>=15?2:1;
+    if(module==="籌碼面") val = m.institutionalReady ? (scores.chip>=20?3:scores.chip>=15?2:1) : 1;
+    if(module==="技術面") val = m.maReady ? (scores.technical>=16?3:scores.technical>=12?2:1) : 1;
+    if(module==="風險面") val = scores.valuation>=18?3:2;
+    const missing = (module==="籌碼面"&&!m.institutionalReady) || (module==="技術面"&&!m.maReady) || (name.includes("EPS")&&!m.eps) || (name.includes("ROE")&&!m.roe);
+    return {module,name,grade:grade(val,missing),className:gradeClass(val,missing),text:plain(name,val,missing)};
+  });
 }
 
-function itemPlainText(name,raw,missing){
-  if(missing) return "目前缺少資料，先保守看待，不直接判定好壞。";
-  if(name.includes("EPS")) return raw>=3?"獲利表現佳，是加分項。":raw===2?"獲利表現尚可，需搭配財報確認。":"獲利穩定度不足，需留意。";
-  if(name.includes("本益比")) return raw>=3?"估值相對合理。":raw===2?"估值可接受，但不算便宜。":"估值偏高或資料不足。";
-  if(name.includes("ROE")) return raw>=3?"獲利效率佳。":raw===2?"獲利能力普通。":"獲利效率偏弱。";
-  if(name.includes("外資")||name.includes("投信")||name.includes("法人")) return raw>=3?"法人籌碼偏多。":raw===2?"法人態度中性。":"法人資料不足或偏弱。";
-  if(name.includes("均線")||name.includes("KD")||name.includes("RSI")||name.includes("MACD")) return raw>=3?"技術面偏多。":raw===2?"技術面中性，可觀察。":"技術訊號尚未轉強。";
-  if(name.includes("量")) return raw>=3?"量價配合良好。":raw===2?"量價普通，尚可觀察。":"量價訊號偏弱。";
-  if(raw>=3) return "條件良好，是加分項。";
-  if(raw===2) return "表現普通，可持續觀察。";
+function grade(v,missing){ if(missing)return"C｜待補"; if(v>=3)return"A｜優秀"; if(v===2)return"B｜普通"; return"C｜偏弱"; }
+function gradeClass(v,missing){ if(missing)return"grade-c"; if(v>=3)return"grade-a"; if(v===2)return"grade-b"; return"grade-c"; }
+function plain(name,v,missing){
+  if(missing) return "此項資料尚未完整串接，先保守看待。";
+  if(v>=3) return "條件良好，是加分項。";
+  if(v===2) return "表現普通，可持續觀察。";
   return "偏弱或資料不足，需保守。";
-}
-
-function rating(score){
-  if(score>=85)return{label:"🟢 強力分批",advice:"條件偏強，可分批布局。"};
-  if(score>=75)return{label:"🟢 分批布局",advice:"條件良好，可分批但不追高。"};
-  if(score>=65)return{label:"🟡 小量試單",advice:"可用零股或小部位建立觀察單。"};
-  if(score>=55)return{label:"🟠 觀察等待",advice:"資料不足或訊號未共振，等待回檔或補充資料。"};
-  return{label:"🔴 暫避",advice:"風險偏高或條件不足，暫不建議進場。"};
-}
-
-function confidence(score){if(score>=88)return"★★★★★";if(score>=78)return"★★★★☆";if(score>=68)return"★★★☆☆";if(score>=58)return"★★☆☆☆";return"★☆☆☆☆";}
-function stockName(code){return getProfile(code).name;}
-function money(n){if(n===null||n===undefined||isNaN(n))return"--";return Number(n).toLocaleString("zh-TW",{maximumFractionDigits:2});}
-function overallGrade(score){if(score>=90)return"A+";if(score>=80)return"A";if(score>=70)return"B";if(score>=60)return"C";return"D";}
-function riskLight(score,profile,chg){if(score>=80&&profile.type!=="highAI")return{label:"🟢 普通偏低",text:"整體風險相對可控。"};if(score>=70)return{label:"🟡 普通",text:"可觀察或小量試單，但不宜重壓。"};if(score>=58)return{label:"🟠 注意",text:"資料不足或訊號未共振，需保守。"};return{label:"🔴 偏高",text:"目前不適合積極買進。"};}
-
-function makeDecision(code,total,modules,market,profile,fair,dataCompleteness){
-  const price=Number(market.price||0),type=profile.type,budget=Number(market.budget||0),chg=Number(market.changePercent);
-  let pullbacks=total>=82?{buy1:price*.98,buy2:price*.94,buy3:price*.90}:total>=70?{buy1:price*.97,buy2:price*.93,buy3:price*.88}:{buy1:price*.95,buy2:price*.90,buy3:price*.85};
-  const isHot=Number.isFinite(chg)&&chg>=3.5;
-  let oneLine,valuationText,valuationDetail,actionText,actionDetail,positionText,positionDetail,badge,finalAction,finalActionText;
-  const belowFair = fair.high && price <= fair.high && total>=70;
-
-  if(total>=85){
-    oneLine=isHot?"條件偏強，但今天漲幅偏大，不追高，等小回檔分批。":"條件強，若符合長期方向，可分批布局。";
-    badge="強力分批"; finalAction="可分批布局"; finalActionText="先建立小部位，保留資金等第二買點。";
-  }else if(total>=75){
-    oneLine=belowFair?"價格仍在合理區間，可分批布局。":"條件良好，可分批但不追高。";
-    badge="分批布局"; finalAction="分批布局"; finalActionText="適合分三批，不適合一次買滿。";
-  }else if(total>=65){
-    oneLine=isHot?"今天偏熱，不追高；但可列入觀察，等回檔再買。":"目前可小量試單，不必等到完全低估才開始觀察。";
-    badge="小量試單"; finalAction="可小量試單"; finalActionText="適合零股或小部位，不適合重壓。";
-  }else if(total>=55){
-    oneLine="目前不是不能買，而是資料與訊號還不夠完整，建議等待確認。";
-    badge="等待確認"; finalAction="等待確認"; finalActionText="不是看壞，而是需要更多資料與更好價格。";
-  }else{
-    oneLine="目前條件不足，暫不建議進場。";
-    badge="暫避"; finalAction="暫避"; finalActionText="保留現金，等待更好的機會。";
-  }
-
-  valuationText = belowFair ? "合理區間，可考慮" : dataCompleteness.score<60 ? "資料不足，保守估算" : "接近合理區間";
-  valuationDetail = `${fair.method}：${fair.text}`;
-  actionText = finalAction;
-  actionDetail = `第一買點 ${money(pullbacks.buy1)} 元，第二買點 ${money(pullbacks.buy2)} 元，第三買點 ${money(pullbacks.buy3)} 元。`;
-
-  let sharesNow=0;
-  if(type==="highAI"){sharesNow=total>=75?20:total>=65?10:0;positionText=sharesNow?`先買 ${sharesNow} 股零股`:"先不買或只觀察";positionDetail="高價 AI 熱門股波動大，以 10～20 股零股試單與分批為主。";}
-  else if(type==="financial"||type==="etf"){sharesNow=total>=75?1000:total>=65?500:0;positionText=sharesNow>=1000?"可先買 1 張":sharesNow?"可先買 500 股觀察":"先等待";positionDetail="金融股/ETF較適合整張分批，但仍應避開短線過熱與大盤風險。";}
-  else{sharesNow=total>=75?100:total>=65?20:0;positionText=sharesNow?`先買 ${sharesNow} 股`:"先觀察";positionDetail="一般成長股建議分 3～5 批，避免一次買在短線高點。";}
-  if(budget>0&&price>0){const suggestedCash=total>=75?budget*.3:total>=65?budget*.15:total>=55?budget*.05:0;const budgetShares=Math.floor(suggestedCash/price);if(budgetShares>0){sharesNow=sharesNow?Math.min(sharesNow,budgetShares):budgetShares;positionText=`依預算先買 ${sharesNow} 股`;positionDetail=`以預算 ${money(budget)} 元估算，第一階段約投入 ${money(sharesNow*price)} 元，保留資金等待第二、第三買點。`;}}
-  const risk=riskLight(total,profile,chg);
-  const grade=overallGrade(total);
-  const why=buildWhyList(total,profile,market,dataCompleteness);
-  const report=buildReport(market,profile,total,fair,pullbacks,positionText,why);
-  return{oneLine,valuationText,valuationDetail,actionText,actionDetail,positionText,positionDetail,badge,buy1:pullbacks.buy1,buy2:pullbacks.buy2,buy3:pullbacks.buy3,sharesNow,grade,riskLight:risk.label,riskText:risk.text,finalAction,finalActionText,why,report};
-}
-
-function buildWhyList(total,profile,market,dataCompleteness){
-  const list=[];
-  if(profile.growth==="高"||profile.growth==="中高") list.push("成長題材具備想像空間，是主要加分來源。");
-  if(profile.type==="highAI") list.push("高價 AI 熱門股波動較大，因此建議零股試單與分批。");
-  if(profile.type==="financial") list.push("金融股較適合用整張分批，但需留意大盤與利率環境。");
-  if(profile.type==="etf") list.push("ETF適合長期分批，但仍要避免短線追高。");
-  if(Number.isFinite(Number(market.changePercent))&&Number(market.changePercent)>=3) list.push("今日漲幅偏大，追高風險上升。");
-  if(dataCompleteness.score<70) list.push("目前 EPS、法人或均線資料尚未完整串接，因此採保守判斷。");
-  if(total>=75) list.push("綜合評分偏強，適合分批而非一次買滿。");
-  else if(total>=65) list.push("綜合評分中上，適合小量建立觀察部位。");
-  else list.push("等待回檔或補充法人、均線與財報資料會更安全。");
-  return list;
-}
-
-function buildReport(market,profile,total,fair,pullbacks,positionText,why){
-  return {
-    title:`${market.name || "台股個股"} Allen AI 投資報告`,
-    summary:`目前綜合評分 ${total}/100，屬於 ${overallGrade(total)} 級。${total>=75?"可以分批研究布局。":total>=65?"可小量試單或觀察。":"建議等待確認。"}`,
-    fair:`合理價模型：${fair.method}，估算區間 ${money(fair.low)}～${money(fair.high)} 元。`,
-    buys:`買點規劃：第一買點 ${money(pullbacks.buy1)} 元，第二買點 ${money(pullbacks.buy2)} 元，第三買點 ${money(pullbacks.buy3)} 元。`,
-    position:`部位建議：${positionText}。`,
-    reasons:why
-  };
 }
