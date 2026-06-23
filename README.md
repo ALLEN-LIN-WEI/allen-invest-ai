@@ -1,28 +1,16 @@
-# Allen Invest AI Final v10.8 資料穩定版
+# Allen Invest AI Final v10.9 財報資料版
 
-## v10.8 只處理三件事
-1. 穩定股價來源
-   - TWSE / TPEx MIS
-   - Yahoo 備援
-   - CMoney 備援
-   - FinMind 最新日收盤價
-   - 無可靠價格則不使用假價格
-   - 加入 60 秒～5 分鐘記憶體快取，降低 Netlify Credits 消耗
-
-2. 穩定 60MA / 120MA 與量能
-   - FinMind TaiwanStockPrice
-   - 5MA / 10MA / 20MA / 60MA / 120MA
-   - 20日均量
-   - 量能倍數
-
-3. 穩定法人資料
-   - FinMind TaiwanStockInstitutionalInvestorsBuySell
-   - 外資5日 / 20日
-   - 投信5日 / 20日
-   - 自營商5日 / 20日
+## v10.9 修正重點
+- 修正只有少數股票有 EPS / ROE / PE 的問題。
+- 新增 FinMind 財報資料模組：
+  - TaiwanStockPER：嘗試取得 PE
+  - TaiwanStockFinancialStatements：嘗試取得 EPS、ROE
+- EPS 成長性與 EPS 穩定性改用近8期 EPS 嘗試判斷。
+- 若 FinMind 抓不到，才使用少數常用股票備用資料。
+- 若仍沒有資料，才顯示「C｜待補」。
 
 ## 建議設定
-為提高 FinMind 穩定度，建議到 Netlify：
+到 Netlify：
 Site settings → Environment variables
 新增：
 FINMIND_TOKEN = 你的 FinMind token
@@ -30,5 +18,4 @@ FINMIND_TOKEN = 你的 FinMind token
 沒有 token 也可用，但較容易遇到流量限制。
 
 ## 注意
-Yahoo 與 CMoney 備援為非官方 HTML 解析，可能因網站改版失效。
-正式下單仍以券商即時報價為準。
+不同股票的財報欄位名稱可能不完全一致，v10.9 已加入多種欄位名稱判斷，但仍可能有部分股票顯示待補。

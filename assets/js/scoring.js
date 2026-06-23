@@ -37,6 +37,8 @@ function analyzeStock(market){
     else if(market.pe > 24) s.valuation -= 1;
   }
   if(market.roe && market.roe > 20) s.fundamental += 2;
+  if(market.epsGrowthScore){ s.fundamental += (market.epsGrowthScore - 2); }
+  if(market.epsStabilityScore){ s.fundamental += (market.epsStabilityScore - 2); }
 
   if(market.maReady && market.price){
     if(market.price > market.ma60) s.technical += 2; else s.technical -= 2;
@@ -135,14 +137,45 @@ function riskLights(s,m){
 function detailScores(scores,m){
   return detailIndicators.map(([module,name])=>{
     let val = 2;
+    let missing = false;
+
     if(module==="基本面") val = scores.fundamental>=25?3:scores.fundamental>=20?2:1;
     if(module==="估值面") val = scores.valuation>=20?3:scores.valuation>=15?2:1;
     if(module==="籌碼面") val = m.institutionalReady ? (scores.chip>=20?3:scores.chip>=15?2:1) : 1;
     if(module==="技術面") val = m.maReady ? (scores.technical>=16?3:scores.technical>=12?2:1) : 1;
     if(module==="風險面") val = scores.valuation>=18?3:2;
-    const missing = (module==="籌碼面"&&!m.institutionalReady) || (module==="技術面"&&!m.maReady) || (name.includes("EPS")&&!m.eps) || (name.includes("ROE")&&!m.roe);
-    return {module,name,grade:grade(val,missing),className:gradeClass(val,missing),text:plain(name,val,missing)};
+
+    if(name.includes("EPS成長")){
+      missing = !m.epsReady;
+      val = m.epsGrowthScore || val;
+    } else if(name.includes("EPS穩定")){
+      missing = !m.epsReady;
+      val = m.epsStabilityScore || val;
+    } else if(name.includes("ROE")){
+      missing = !m.roe;
+      val = m.roe ? (m.roe >= 18 ? 3 : m.roe >= 10 ? 2 : 1) : 1;
+    } else if(name.includes("本益比")){
+      missing = !m.pe;
+      val = m.pe ? (m.pe <= 18 ? 3 : m.pe <= 28 ? 2 : 1) : 1;
+    } else if(module==="籌碼面"&&!m.institutionalReady){
+      missing = true;
+    } else if(module==="技術面"&&!m.maReady){
+      missing = true;
+    }
+
+    return {module,name,grade:grade(val,missing),className:gradeClass(val,missing),text:plainFinancial(name,val,missing,m)};
   });
+}
+
+function plainFinancial(name,v,missing,m){
+  if(missing) return "此項資料尚未完整串接，先保守看待。";
+  if(name.includes("EPS成長")) return m.epsGrowthText || (v>=3?"EPS成長性佳。":v===2?"EPS成長普通。":"EPS成長偏弱。");
+  if(name.includes("EPS穩定")) return m.epsStabilityText || (v>=3?"EPS穩定度佳。":v===2?"EPS穩定度普通。":"EPS穩定度偏弱。");
+  if(name.includes("ROE")) return `ROE 約 ${m.roe}%，${v>=3?"獲利效率佳。":v===2?"獲利效率普通。":"獲利效率偏弱。"}`;
+  if(name.includes("本益比")) return `本益比約 ${m.pe} 倍，${v>=3?"估值相對合理。":v===2?"估值可接受。":"估值偏高或需留意。"}`;
+  if(v>=3) return "條件良好，是加分項。";
+  if(v===2) return "表現普通，可持續觀察。";
+  return "偏弱或資料不足，需保守。";
 }
 
 function grade(v,missing){ if(missing)return"C｜待補"; if(v>=3)return"A｜優秀"; if(v===2)return"B｜普通"; return"C｜偏弱"; }

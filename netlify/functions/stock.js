@@ -50,12 +50,13 @@ exports.handler = async (event) => {
   }
 
   const enriched = enrich(symbol, market);
-  const [tech, inst] = await Promise.all([
+  const [financial, tech, inst] = await Promise.all([
+    getFinancials(symbol),
     getTechnical(symbol, enriched),
     getInstitutional(symbol)
   ]);
 
-  const finalPayload = { ...enriched, ...tech, ...inst };
+  const finalPayload = { ...enriched, ...financial, ...tech, ...inst };
   setCache(cacheKey, finalPayload, finalPayload.mode === "LIVE_TW" ? 60 : 300);
   return json({ ...finalPayload, budget, cacheHit:false });
 };
@@ -349,6 +350,120 @@ async function finmindDataset(dataset, symbol, startDate, endDate){
   if(data.status && data.status !== 200) throw new Error(data.msg || `FinMind ${dataset} 失敗`);
   return data.data || [];
 }
+
+
+async function getFinancials(symbol){
+  const fallback = fallbackFinancial(symbol);
+
+  try{
+    const [perRows, fsRows] = await Promise.all([
+      safeFinmindDataset("TaiwanStockPER", symbol, daysAgo(90), today()),
+      safeFinmindDataset("TaiwanStockFinancialStatements", symbol, daysAgo(365*6), today())
+    ]);
+
+    const perClean = (perRows || []).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    const latestPer = perClean[perClean.length-1] || {};
+    const pe = firstNumber(latestPer.PER, latestPer.pe, latestPer.PE, latestPer["本益比"]) || fallback.pe || null;
+
+    const normalized = normalizeFinancialRows(fsRows || []);
+    const epsRows = normalized.filter(r => isEpsType(r.type) && Number.isFinite(r.value)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    const roeRows = normalized.filter(r => isRoeType(r.type) && Number.isFinite(r.value)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+
+    let eps = epsRows.length ? round(epsRows[epsRows.length-1].value) : fallback.eps || null;
+    let roe = roeRows.length ? round(roeRows[roeRows.length-1].value) : fallback.roe || null;
+
+    const epsStats = analyzeEps(epsRows);
+
+    return {
+      eps,
+      pe,
+      roe,
+      epsReady: epsRows.length >= 4 || !!fallback.eps,
+      roeReady: !!roe,
+      financialReady: (epsRows.length >= 4 || !!fallback.eps || !!roe || !!pe),
+      epsRecent: epsRows.slice(-8).map(r=>({date:r.date,value:round(r.value)})),
+      epsGrowthScore: epsStats.growthScore || (fallback.eps ? 2 : null),
+      epsStabilityScore: epsStats.stabilityScore || (fallback.eps ? 2 : null),
+      epsGrowthText: epsStats.growthText || (fallback.eps ? "使用備用EPS資料，成長性需再確認。" : null),
+      epsStabilityText: epsStats.stabilityText || (fallback.eps ? "使用備用EPS資料，穩定性需再確認。" : null),
+      financialSource: epsRows.length || roeRows.length || perClean.length ? "FinMind 財報資料" : "備用資料"
+    };
+  }catch(e){
+    return {
+      eps:fallback.eps || null,
+      pe:fallback.pe || null,
+      roe:fallback.roe || null,
+      epsReady:!!fallback.eps,
+      roeReady:!!fallback.roe,
+      financialReady:!!(fallback.eps || fallback.pe || fallback.roe),
+      epsGrowthScore:fallback.eps ? 2 : null,
+      epsStabilityScore:fallback.eps ? 2 : null,
+      epsGrowthText:fallback.eps ? "使用備用EPS資料，成長性需再確認。" : null,
+      epsStabilityText:fallback.eps ? "使用備用EPS資料，穩定性需再確認。" : null,
+      financialSource:`財報資料失敗：${e.message}`
+    };
+  }
+}
+
+async function safeFinmindDataset(dataset, symbol, startDate, endDate){
+  try{ return await finmindDataset(dataset, symbol, startDate, endDate); }
+  catch(e){ return []; }
+}
+
+function normalizeFinancialRows(rows){
+  return rows.map(r=>{
+    const type = String(r.type || r.account || r.name || r.origin_name || r.label || "");
+    const value = firstNumber(r.value, r.amount, r.data_value, r.val);
+    return {date:r.date || r.year || r.quarter || "", type, value};
+  }).filter(r=>r.type && Number.isFinite(r.value));
+}
+
+function isEpsType(t){
+  const s = String(t).toLowerCase();
+  return s === "eps" || s.includes("earnings per share") || s.includes("每股盈餘") || s.includes("基本每股盈餘");
+}
+function isRoeType(t){
+  const s = String(t).toLowerCase();
+  return s === "roe" || s.includes("return on equity") || s.includes("權益報酬");
+}
+function firstNumber(...vals){
+  for(const v of vals){
+    if(v===undefined || v===null || v==="" || v==="-") continue;
+    const n = Number(String(v).replace(/,/g,""));
+    if(Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function analyzeEps(epsRows){
+  const rows = epsRows.filter(r=>Number.isFinite(r.value)).slice(-8);
+  if(rows.length < 4) return {};
+  const values = rows.map(r=>r.value);
+  const positives = values.filter(v=>v>0).length;
+  const latest = values[values.length-1];
+  const first = values[0];
+  const growth = latest - first;
+  const upCount = values.slice(1).filter((v,i)=>v>=values[i]).length;
+  const avgVal = values.reduce((a,b)=>a+b,0)/values.length;
+  const variance = values.reduce((a,b)=>a+Math.pow(b-avgVal,2),0)/values.length;
+  const cv = avgVal ? Math.sqrt(variance)/Math.abs(avgVal) : 999;
+
+  let growthScore = 2;
+  if(positives >= rows.length-1 && growth > 0 && upCount >= Math.floor((rows.length-1)*0.55)) growthScore = 3;
+  if(latest < 0 || growth < 0) growthScore = 1;
+
+  let stabilityScore = 2;
+  if(positives === rows.length && cv < 0.55) stabilityScore = 3;
+  if(positives < rows.length-1 || cv > 1.2) stabilityScore = 1;
+
+  return {
+    growthScore,
+    stabilityScore,
+    growthText:`近${rows.length}期EPS由 ${round(first)} 變化至 ${round(latest)}，${growthScore>=3?"成長性佳":growthScore===2?"成長性普通":"成長性偏弱"}。`,
+    stabilityText:`近${rows.length}期EPS正數期數 ${positives}/${rows.length}，${stabilityScore>=3?"穩定性佳":stabilityScore===2?"穩定性普通":"穩定性偏弱"}。`
+  };
+}
+
 
 function enrich(symbol, m){
   const db = {
