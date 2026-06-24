@@ -73,6 +73,11 @@ function render(m,a){
   $("foreign20").textContent = m.institutionalReady ? `${money(m.foreign20d)} 張` : "待接入";
   $("trust20").textContent = m.institutionalReady ? `${money(m.trust20d)} 張` : "待接入";
   $("institutionText").textContent = m.institutionalReady ? institutionText(m) : "法人資料為盤後資料，尚未穩定接入。";
+  if($("usMarketText")){
+    $("usMarketText").textContent = m.usMarketSummary || "待補";
+    $("twMarketText").textContent = m.twMarketSummary || "待補";
+    $("marketBuyText").textContent = m.marketBuyText || "大盤資料不足，買點維持原模型。";
+  }
 
   $("industryBox").innerHTML = a.profile.industry.map(x=>`<span class="pill">${x}</span>`).join("");
   $("retireScore").textContent = `${a.profile.retirement}`;
@@ -101,6 +106,7 @@ function renderReport(m,a){
     <p>Allen AI 評分為 <b>${a.total}/100</b>，評級為 <b>${a.decision.label}</b>。</p>
     <p>目前股價 ${money(m.price)} 元，合理價區間估算為 ${money(a.fair.low)}～${money(a.fair.high)} 元，估值燈號為 ${a.fair.light}。</p>
     <p>買點規劃：第一買點 ${money(a.decision.buy1)} 元，第二買點 ${money(a.decision.buy2)} 元，第三買點 ${money(a.decision.buy3)} 元。</p>
+    <p>大盤環境：${m.usMarketSummary || "美股待補"}；${m.twMarketSummary || "台股大盤待補"}。${m.marketBuyText || ""}</p>
     <p>技術確認：60MA ${m.ma60?money(m.ma60)+" 元":"待補"}，120MA ${m.ma120?money(m.ma120)+" 元":"待補"}，量能 ${m.volumeRatio?m.volumeRatio+" 倍":"待補"}。</p>
     <p>建議部位：${a.decision.shares}。${a.decision.shareText}</p>
     <p>結論：${a.decision.sentence}</p>

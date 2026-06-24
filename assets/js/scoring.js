@@ -106,9 +106,13 @@ function decisionEngine(m,p,total,fair,scores){
   else if(total>=60){ label="等待回檔"; sentence="條件尚可但不夠完整，等待回檔或資料補強。"; risk="🟠 注意"; }
   else { label="避免進場"; sentence="條件不足，暫時不建議買進。"; risk="🔴 高"; }
 
-  const buy1 = price ? price*(total>=80?0.97:0.95) : null;
-  const buy2 = price ? price*(total>=80?0.93:0.90) : null;
-  const buy3 = price ? price*(total>=80?0.88:0.85) : null;
+  const marketAdj = marketBuyAdjustment(m);
+  const base1 = total>=80?0.97:0.95;
+  const base2 = total>=80?0.93:0.90;
+  const base3 = total>=80?0.88:0.85;
+  const buy1 = price ? price*(base1 + marketAdj.buy1Adj) : null;
+  const buy2 = price ? price*(base2 + marketAdj.buy2Adj) : null;
+  const buy3 = price ? price*(base3 + marketAdj.buy3Adj) : null;
 
   let shares, shareText;
   if(p.type==="highAI"){
@@ -123,6 +127,16 @@ function decisionEngine(m,p,total,fair,scores){
   }
 
   return {label,sentence,risk,buy1,buy2,buy3,shares,shareText};
+}
+
+
+function marketBuyAdjustment(m){
+  const pressure = Number(m.marketPressure || 0);
+  if(pressure >= 2) return {buy1Adj:0.015, buy2Adj:0.01, buy3Adj:0};
+  if(pressure >= 1) return {buy1Adj:0.008, buy2Adj:0.005, buy3Adj:0};
+  if(pressure <= -2) return {buy1Adj:-0.025, buy2Adj:-0.02, buy3Adj:-0.015};
+  if(pressure <= -1) return {buy1Adj:-0.012, buy2Adj:-0.01, buy3Adj:-0.005};
+  return {buy1Adj:0, buy2Adj:0, buy3Adj:0};
 }
 
 function riskLights(s,m){

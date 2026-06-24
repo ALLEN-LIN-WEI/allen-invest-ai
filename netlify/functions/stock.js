@@ -52,13 +52,14 @@ exports.handler = async (event) => {
 
     const enriched = enrich(symbol, market);
 
-    const [tech, inst, financial] = await Promise.all([
+    const [tech, inst, financial, marketContext] = await Promise.all([
       safe(getTechnical(symbol, enriched), fallbackTechnical("技術資料逾時或失敗")),
       safe(getInstitutional(symbol), institutionalEmpty("法人資料逾時或失敗")),
-      safe(getFinancials(symbol), fallbackFinancialPayload(symbol, "財報資料逾時或失敗"))
+      safe(getFinancials(symbol), fallbackFinancialPayload(symbol, "財報資料逾時或失敗")),
+      safe(getMarketContext(), fallbackMarketContext("大盤資料逾時或失敗"))
     ]);
 
-    const finalPayload = { ...enriched, ...financial, ...tech, ...inst };
+    const finalPayload = { ...enriched, ...financial, ...tech, ...inst, ...marketContext };
     setCache(cacheKey, finalPayload, finalPayload.mode === "LIVE_TW" ? 60 : 300);
 
     return json({ ...finalPayload, budget, cacheHit:false });
@@ -111,6 +112,93 @@ async function safe(promise, fallback){
   try { return await withTimeout(promise, 4500, "timeout"); }
   catch(e) { return { ...fallback, safeError:e.message }; }
 }
+
+
+async function getMarketContext(){
+  const [us, tw] = await Promise.all([
+    safe(getUSMarketContext(), fallbackUSMarket()),
+    safe(getTaiwanIndexContext(), fallbackTaiwanMarket())
+  ]);
+  const pressure = marketPressureScore(us, tw);
+  return {
+    usMarketReady:us.ready,
+    twMarketReady:tw.ready,
+    usMarketSummary:us.summary,
+    twMarketSummary:tw.summary,
+    marketPressure:pressure,
+    marketBuyText:marketBuyText(pressure),
+    marketContextSource:`${us.source || "US待補"}；${tw.source || "TW待補"}`
+  };
+}
+
+async function getUSMarketContext(){
+  const symbols = [["Dow","^DJI"],["Nasdaq","^IXIC"],["S&P500","^GSPC"],["Russell2000","^RUT"]];
+  const rows = [];
+  for(const [name,ticker] of symbols){
+    try{
+      const q = await yahooChart(ticker);
+      if(q && Number.isFinite(q.changePercent)) rows.push({name, changePercent:q.changePercent});
+    }catch(e){}
+  }
+  if(!rows.length) return fallbackUSMarket();
+  const avg = rows.reduce((a,b)=>a+b.changePercent,0)/rows.length;
+  return {ready:true, avgChange:round(avg), rows, summary:rows.map(r=>`${r.name} ${fmtPct(r.changePercent)}`).join("，"), source:"Yahoo 美股四大指數"};
+}
+
+async function getTaiwanIndexContext(){
+  try{
+    const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_t00.tw&json=1&delay=0&_=${Date.now()}`;
+    const res = await fetch(url,{headers:{"User-Agent":"Mozilla/5.0","Referer":"https://mis.twse.com.tw/stock/fibest.jsp"}});
+    const data = await res.json();
+    const item = data?.msgArray?.[0];
+    const latest = num(item?.z);
+    const prev = num(item?.y);
+    if(latest && prev){
+      const pct = Math.round(((latest-prev)/prev)*10000)/100;
+      return {ready:true, changePercent:pct, summary:`加權指數 ${fmtPct(pct)}`, source:"TWSE MIS 加權指數"};
+    }
+  }catch(e){}
+  return fallbackTaiwanMarket();
+}
+
+async function yahooChart(ticker){
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`;
+  const res = await fetch(url,{headers:{"User-Agent":"Mozilla/5.0","Accept":"application/json"}});
+  const data = await res.json();
+  const result = data?.chart?.result?.[0];
+  const closes = (result?.indicators?.quote?.[0]?.close || []).filter(v=>Number.isFinite(v));
+  if(closes.length < 2) throw new Error("not enough data");
+  const last = closes[closes.length-1];
+  const prev = closes[closes.length-2];
+  return {changePercent:Math.round(((last-prev)/prev)*10000)/100};
+}
+
+function marketPressureScore(us, tw){
+  let score = 0;
+  if(us.ready){
+    if(us.avgChange >= 1) score += 1;
+    if(us.avgChange <= -1) score -= 1;
+    if(us.avgChange <= -2) score -= 1;
+  }
+  if(tw.ready){
+    if(tw.changePercent >= 0.8) score += 1;
+    if(tw.changePercent <= -0.8) score -= 1;
+    if(tw.changePercent <= -1.8) score -= 1;
+  }
+  return Math.max(-3, Math.min(3, score));
+}
+
+function marketBuyText(pressure){
+  if(pressure >= 2) return "美股與台股環境偏強，第一買點略上修，允許小量試單。";
+  if(pressure >= 1) return "大盤略強，第一買點小幅上修。";
+  if(pressure <= -2) return "美股與台股偏弱，第一與第二買點下修，避免太早接刀。";
+  if(pressure <= -1) return "大盤略弱，買點小幅下修，分批更保守。";
+  return "大盤中性，買點維持原模型。";
+}
+function fallbackUSMarket(){ return {ready:false, avgChange:null, rows:[], summary:"美股四大指數待補", source:"US待補"}; }
+function fallbackTaiwanMarket(){ return {ready:false, changePercent:null, summary:"台股大盤待補", source:"TW待補"}; }
+function fallbackMarketContext(reason){ return {usMarketReady:false, twMarketReady:false, usMarketSummary:"美股四大指數待補", twMarketSummary:"台股大盤待補", marketPressure:0, marketBuyText:"大盤資料不足，買點維持原模型。", marketContextSource:reason}; }
+function fmtPct(v){ return `${v>=0?"+":""}${round(v)}%`; }
 
 async function getTaiwanMarket(symbol){
   const channels = [
